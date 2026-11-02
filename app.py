@@ -11,9 +11,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- ENLACE A GOOGLE DRIVE ---
+# --- ENLACES A GOOGLE DRIVE Y GOOGLE SHEETS ---
 DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Mqp3Lf-U2PC5BXPCr949R4y3VbSBVk_B?usp=drive_link"
-DRIVE_FOLDER_NAME = "01 Personal"
+DRIVE_FOLDER_NAME = "Carpeta Personal"
+SHEETS_REGISTROS_URL = "https://docs.google.com/spreadsheets/d/10nh75p-uzJAsXjVJxnMcicEul7pvw4TiZB9tgHExlvA/edit?usp=sharing"
 
 # --- ESTILOS CSS PERSONALIZADOS (SAP FIORI / HORIZON THEME) ---
 def cargar_estilos_sap():
@@ -46,16 +47,6 @@ def cargar_estilos_sap():
             color: #FFFFFF;
             letter-spacing: 0.5px;
         }
-        .sap-shell-badge {
-            background-color: #F0AB00;
-            color: #1D2D3E;
-            font-weight: 800;
-            font-size: 0.75rem;
-            padding: 3px 8px;
-            border-radius: 3px;
-            text-transform: uppercase;
-        }
-
         .sap-drive-link {
             color: #FFFFFF !important;
             background-color: rgba(255, 255, 255, 0.15);
@@ -65,6 +56,7 @@ def cargar_estilos_sap():
             text-decoration: none !important;
             font-weight: 600;
             transition: background-color 0.2s;
+            margin-left: 8px;
         }
         .sap-drive-link:hover {
             background-color: rgba(255, 255, 255, 0.3);
@@ -173,7 +165,6 @@ def obtener_siguiente_codigo():
         return f"E{siguiente:03d}"
 
 def exportar_dataframe_a_csv(df: pd.DataFrame) -> bytes:
-    # Genera un archivo CSV compatible de forma nativa con Excel
     return df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
 
 def exportar_respaldo_csv():
@@ -187,9 +178,10 @@ def exportar_respaldo_csv():
 # --- CABECERA SAP FIORI ---
 shell_bar_html = f"""
 <div class="sap-shell-bar">
-    <div style="display: flex; align-items: center; gap: 15px;">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
         <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
-        <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 Carpeta Drive ({DRIVE_FOLDER_NAME})</a>
+        <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 {DRIVE_FOLDER_NAME} (.csv)</a>
+        <a href="{SHEETS_REGISTROS_URL}" target="_blank" class="sap-drive-link">📊 Excel Registros</a>
     </div>
     <div class="sap-shell-badge">SAP Horizon</div>
 </div>
@@ -243,12 +235,21 @@ with tabs[0]:
     conn.close()
 
     if not df_ingresos.empty:
-        st.download_button(
-            label="📥 Descargar Ingresos (Excel / CSV)",
-            data=exportar_dataframe_a_csv(df_ingresos),
-            file_name=f"Ingresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        col_btn1, col_btn2 = st.columns([1, 2])
+        with col_btn1:
+            st.download_button(
+                label="📥 Descargar Ingresos (.csv)",
+                data=exportar_dataframe_a_csv(df_ingresos),
+                file_name=f"Ingresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        with col_btn2:
+            st.markdown(
+                f'<a href="{DRIVE_FOLDER_URL}" target="_blank" style="text-decoration:none;"><button style="width:100%; height: 42px; background-color:#0070F2; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">☁️ Guardar / Subir archivo .csv en Carpeta Personal (Drive)</button></a>',
+                unsafe_allow_html=True
+            )
+
         st.dataframe(df_ingresos, use_container_width=True)
         
         col_sum1, col_sum2 = st.columns(2)
@@ -332,13 +333,21 @@ with tabs[1]:
     conn.close()
 
     if not df_egresos.empty:
-        st.download_button(
-            label="📥 Descargar Egresos (Excel / CSV)",
-            data=exportar_dataframe_a_csv(df_egresos),
-            file_name=f"Egresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
-        
+        col_btn1, col_btn2 = st.columns([1, 2])
+        with col_btn1:
+            st.download_button(
+                label="📥 Descargar Egresos (.csv)",
+                data=exportar_dataframe_a_csv(df_egresos),
+                file_name=f"Egresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        with col_btn2:
+            st.markdown(
+                f'<a href="{DRIVE_FOLDER_URL}" target="_blank" style="text-decoration:none;"><button style="width:100%; height: 42px; background-color:#0070F2; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">☁️ Guardar / Subir archivo .csv en Carpeta Personal (Drive)</button></a>',
+                unsafe_allow_html=True
+            )
+
         codigos_unicos = df_egresos['Código'].unique()
         for cod in codigos_unicos:
             sub_df = df_egresos[df_egresos['Código'] == cod]
@@ -370,12 +379,20 @@ with tabs[2]:
     df_consolidado = pd.concat([df_ing_m, df_egr_m], ignore_index=True)
 
     if not df_consolidado.empty:
-        st.download_button(
-            label="📥 Descargar Balance Mensual (Excel / CSV)",
-            data=exportar_dataframe_a_csv(df_consolidado),
-            file_name=f"Balance_{mes_sel}_{anio_sel}_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
+        col_btn1, col_btn2 = st.columns([1, 2])
+        with col_btn1:
+            st.download_button(
+                label="📥 Descargar Balance Mensual (.csv)",
+                data=exportar_dataframe_a_csv(df_consolidado),
+                file_name=f"Balance_{mes_sel}_{anio_sel}_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        with col_btn2:
+            st.markdown(
+                f'<a href="{DRIVE_FOLDER_URL}" target="_blank" style="text-decoration:none;"><button style="width:100%; height: 42px; background-color:#0070F2; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">☁️ Guardar / Subir archivo .csv en Carpeta Personal (Drive)</button></a>',
+                unsafe_allow_html=True
+            )
 
     ing_pen = df_ing_m[df_ing_m['Moneda'] == 'PEN']['Monto'].sum()
     egr_pen = df_egr_m[df_egr_m['Moneda'] == 'PEN']['Monto'].sum()
