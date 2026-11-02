@@ -1,23 +1,9 @@
-
-def generar_excel_ingresos_egresos() -> bytes:
-    conn = sqlite3.connect("finanzas.db")
-    df_ing = pd.read_sql_query("SELECT id AS 'Doc #', anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos", conn)
-    df_egr = pd.read_sql_query("SELECT id AS 'Doc #', codigo AS Código, anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos", conn)
-    conn.close()
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_ing.to_excel(writer, sheet_name='Ingresos', index=False)
-        df_egr.to_excel(writer, sheet_name='Egresos', index=False)
-    
-    return output.getvalue()
-
-
 import pandas as pd
 import streamlit as st
-import sqlite3
+import openpyxl
 import io
 from datetime import datetime
+import os
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -26,12 +12,23 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- ENLACES A GOOGLE DRIVE Y GOOGLE SHEETS ---
-DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Mqp3Lf-U2PC5BXPCr949R4y3VbSBVk_B?usp=drive_link"
-DRIVE_FOLDER_NAME = "Carpeta Personal"
-SHEETS_REGISTROS_URL = "https://docs.google.com/spreadsheets/d/10nh75p-uzJAsXjVJxnMcicEul7pvw4TiZB9tgHExlvA/edit?usp=sharing"
+# --- ENLACE AL ARCHIVO EXCEL ONLINE EN ONEDRIVE ---
+ONEDRIVE_URL = "https://1drv.ms/x/c/f2550978c0f7f8d5/IQCbpvC_igOlS4veC_-Pl1fPAdhDS8b5yrSeblI8uyQAIog?e=b82J1A"
+EXCEL_FILE = "Control_Financiero.xlsx"
 
-# --- CREDENCIALES DE GITHUB NUEVAS ---
+# --- INICIALIZACIÓN DEL ARCHIVO EXCEL SI NO EXISTE ---
+def init_excel():
+    if not os.path.exists(EXCEL_FILE):
+        wb = openpyxl.Workbook()
+        ws_ing = wb.active
+        ws_ing.title = "Ingresos"
+        ws_ing.append(["Doc #", "Año", "Mes", "Tipo", "Descripción", "Monto", "Moneda"])
+        
+        ws_egr = wb.create_sheet(title="Egresos")
+        ws_egr.append(["Doc #", "Código", "Año", "Mes", "Tipo", "Descripción", "Monto", "Moneda"])
+        wb.save(EXCEL_FILE)
+
+init_excel()
 
 # --- ESTILOS CSS PERSONALIZADOS (SAP FIORI / HORIZON THEME) ---
 def cargar_estilos_sap():
@@ -134,22 +131,7 @@ def cargar_estilos_sap():
 
 cargar_estilos_sap()
 
-# --- FUNCION PARA GUARDAR EN GITHUB ---
-def sincronizar_con_github(nombre_archivo="respaldo_finanzas.csv"):
-    pass
-
-# --- INICIALIZACIÓN DE BASE DE DATOS LOCAL ---
-def init_db():
-    conn = sqlite3.connect("finanzas.db")
-    c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS ingresos (id INTEGER PRIMARY KEY AUTOINCREMENT, anio INTEGER, mes TEXT, tipo TEXT, descripcion TEXT, monto REAL, moneda TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS egresos (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, anio INTEGER, mes TEXT, tipo TEXT, descripcion TEXT, monto REAL, moneda TEXT)")
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# --- CONSTANTES Y FECHA ACTUAL DEL SISTEMA ---
+# --- CONSTANTES Y FECHA ACTUAL ---
 MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
          "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 ANIOS = list(range(2026, 2031))
@@ -186,49 +168,42 @@ def agregar_fila_adicional():
     st.session_state.cant_egresos_adicionales += 1
 
 def obtener_siguiente_codigo():
-    conn = sqlite3.connect("finanzas.db")
-    df = pd.read_sql_query("SELECT codigo FROM egresos", conn)
-    conn.close()
-    if df.empty or df['codigo'].dropna().empty:
+    try:
+        df_egr = pd.read_excel(EXCEL_FILE, sheet_name="Egresos")
+        if df_egr.empty or 'Código' not in df_egr.columns or df_egr['Código'].dropna().empty:
+            return "E001"
+        else:
+            codigos = df_egr['Código'].astype(str).str.replace('E', '').astype(int)
+            siguiente = codigos.max() + 1
+            return f"E{siguiente:03d}"
+    except Exception:
         return "E001"
-    else:
-        codigos = df['codigo'].str.replace('E', '').astype(int)
-        siguiente = codigos.max() + 1
-        return f"E{siguiente:03d}"
 
-def exportar_dataframe_a_csv(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
-
-def exportar_respaldo_csv(sincronizar=False):
-    conn = sqlite3.connect("finanzas.db")
-    df_ing = pd.read_sql_query("SELECT 'INGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM ingresos", conn)
-    df_egr = pd.read_sql_query("SELECT 'EGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM egresos", conn)
-    conn.close()
-    df_total = pd.concat([df_ing, df_egr], ignore_index=True)
-    df_total.to_csv("respaldo_finanzas.csv", index=False)
-
-# --- CABECERA SAP FIORI ---
-shell_bar_html = """
+# --- CABECERA SAP FIORI CON ENLACE A ONEDRIVE ---
+shell_bar_html = f"""
 <div class="sap-shell-bar">
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
         <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
+        <a href="{ONEDRIVE_URL}" target="_blank" class="sap-drive-link">☁️ Abrir Control_Financiero.xlsx (OneDrive)</a>
     </div>
     <div class="sap-shell-badge">SAP Horizon</div>
 </div>
 """
 st.html(shell_bar_html)
 
-# Botón de descarga general de Excel consolidado en la parte superior o lateral
+# Botón de descarga general de Excel consolidado
 col_down_1, col_down_2 = st.columns([3, 1])
 with col_down_2:
-    excel_data = generar_excel_ingresos_egresos()
-    st.download_button(
-        label="📥 Descargar Todo (.xlsx)",
-        data=excel_data,
-        file_name=f"Control_Financiero_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
+    if os.path.exists(EXCEL_FILE):
+        with open(EXCEL_FILE, "rb") as f:
+            excel_bytes = f.read()
+        st.download_button(
+            label="📥 Descargar Excel Actualizado",
+            data=excel_bytes,
+            file_name="Control_Financiero.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 tabs = st.tabs(["💵 Gestor de Ingresos", "💸 Gestor de Egresos", "📊 Dashboard Analítico"])
 
@@ -257,56 +232,55 @@ with tabs[0]:
             
             if btn_guardar_ing:
                 if desc_ing and monto_ing > 0:
-                    conn = sqlite3.connect("finanzas.db")
-                    c = conn.cursor()
-                    c.execute(
-                        "INSERT INTO ingresos (anio, mes, tipo, descripcion, monto, moneda) VALUES (?, ?, ?, ?, ?, ?)",
-                        (anio_ing, mes_ing, tipo_ing, desc_ing, monto_ing, moneda_ing)
-                    )
-                    conn.commit()
-                    conn.close()
-                    exportar_respaldo_csv(sincronizar=True)
-                    st.success("Ingreso guardado exitosamente.")
+                    df_ing = pd.read_excel(EXCEL_FILE, sheet_name="Ingresos")
+                    nuevo_id = int(df_ing['Doc #'].max() + 1) if not df_ing.empty and 'Doc #' in df_ing.columns and not df_ing['Doc #'].dropna().empty else 1
+                    
+                    nuevo_reg = pd.DataFrame([{
+                        'Doc #': nuevo_id,
+                        'Año': anio_ing,
+                        'Mes': mes_ing,
+                        'Tipo': tipo_ing,
+                        'Descripción': desc_ing,
+                        'Monto': monto_ing,
+                        'Moneda': moneda_ing
+                    }])
+                    
+                    df_ing = pd.concat([df_ing, nuevo_reg], ignore_index=True)
+                    
+                    with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                        df_ing.to_excel(writer, sheet_name='Ingresos', index=False)
+                        pd.read_excel(EXCEL_FILE, sheet_name='Egresos').to_excel(writer, sheet_name='Egresos', index=False)
+                    
+                    st.success("Ingreso registrado y actualizado automáticamente en el Excel con éxito.")
                     st.rerun()
                 else:
                     st.warning("Verifique que la descripción y el monto sean válidos.")
 
     st.markdown("#### Registros Contabilizados")
-    conn = sqlite3.connect("finanzas.db")
-    df_ingresos = pd.read_sql_query("SELECT id AS 'Doc #', anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos", conn)
-    conn.close()
+    try:
+        df_ingresos = pd.read_excel(EXCEL_FILE, sheet_name="Ingresos")
+    except Exception:
+        df_ingresos = pd.DataFrame(columns=['Doc #', 'Año', 'Mes', 'Tipo', 'Descripción', 'Monto', 'Moneda'])
 
     if not df_ingresos.empty:
-        col_btn1, col_btn2 = st.columns([1, 2])
-        with col_btn1:
-            st.download_button(
-                label="📥 Descargar Ingresos (.csv)",
-                data=exportar_dataframe_a_csv(df_ingresos),
-                file_name=f"Ingresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-
-
         st.dataframe(df_ingresos, use_container_width=True)
 
         st.markdown("##### ✏️ Modificación / Eliminación de Registro de Ingreso")
         col_ed1, col_ed2, col_ed3 = st.columns([2, 1, 1])
-        id_ing_sel = col_ed1.selectbox("Seleccionar Documento (Doc #)", df_ingresos['Doc #'].tolist(), key="select_ing_edit")
+        doc_ids = df_ingresos['Doc #'].tolist() if 'Doc #' in df_ingresos.columns else []
+        id_ing_sel = col_ed1.selectbox("Seleccionar Documento (Doc #)", doc_ids, key="select_ing_edit")
         
         if col_ed2.button("✏️ Cargar para Editar", key="btn_load_ing"):
             st.session_state.edit_ingreso_id = id_ing_sel
 
         if col_ed3.button("🗑️ Eliminar Registro", key="btn_del_ing"):
-            conn = sqlite3.connect("finanzas.db")
-            c = conn.cursor()
-            c.execute("DELETE FROM ingresos WHERE id=?", (id_ing_sel,))
-            conn.commit()
-            conn.close()
+            df_ingresos = df_ingresos[df_ingresos['Doc #'] != id_ing_sel]
+            with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                df_ingresos.to_excel(writer, sheet_name='Ingresos', index=False)
+                pd.read_excel(EXCEL_FILE, sheet_name='Egresos').to_excel(writer, sheet_name='Egresos', index=False)
             if st.session_state.edit_ingreso_id == id_ing_sel:
                 st.session_state.edit_ingreso_id = None
-            exportar_respaldo_csv(sincronizar=True)
-            st.success(f"Ingreso Doc #{id_ing_sel} eliminado exitosamente.")
+            st.success(f"Ingreso Doc #{id_ing_sel} eliminado y actualizado en el Excel.")
             st.rerun()
 
         if st.session_state.edit_ingreso_id:
@@ -326,28 +300,22 @@ with tabs[0]:
                     btn_actualizar = st.form_submit_button("💾 Actualizar Registro")
                     
                     if btn_actualizar:
-                        conn = sqlite3.connect("finanzas.db")
-                        c = conn.cursor()
-                        c.execute("""
-                            UPDATE ingresos 
-                            SET anio=?, mes=?, tipo=?, descripcion=?, monto=?, moneda=?
-                            WHERE id=?
-                        """, (anio_e, mes_e, tipo_e, desc_e, monto_e, moneda_e, st.session_state.edit_ingreso_id))
-                        conn.commit()
-                        conn.close()
+                        df_ingresos.loc[df_ingresos['Doc #'] == st.session_state.edit_ingreso_id, ['Año', 'Mes', 'Tipo', 'Descripción', 'Monto', 'Moneda']] = [anio_e, mes_e, tipo_e, desc_e, monto_e, moneda_e]
+                        with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                            df_ingresos.to_excel(writer, sheet_name='Ingresos', index=False)
+                            pd.read_excel(EXCEL_FILE, sheet_name='Egresos').to_excel(writer, sheet_name='Egresos', index=False)
                         st.session_state.edit_ingreso_id = None
-                        exportar_respaldo_csv(sincronizar=True)
-                        st.success("Registro actualizado y guardado localmente exitosamente.")
+                        st.success("Registro actualizado y sincronizado en el Excel.")
                         st.rerun()
 
         col_sum1, col_sum2 = st.columns(2)
-        monto_pen = df_ingresos[df_ingresos['Moneda'] == 'PEN']['Monto'].sum()
-        monto_usd = df_ingresos[df_ingresos['Moneda'] == 'USD']['Monto'].sum()
+        monto_pen = df_ingresos[df_ingresos['Moneda'] == 'PEN']['Monto'].sum() if 'Moneda' in df_ingresos.columns else 0
+        monto_usd = df_ingresos[df_ingresos['Moneda'] == 'USD']['Monto'].sum() if 'Moneda' in df_ingresos.columns else 0
         
         col_sum1.metric("Acumulado Ingresos (PEN)", f"S/ {monto_pen:,.2f}")
         col_sum2.metric("Acumulado Ingresos (USD)", f"$ {monto_usd:,.2f}")
     else:
-        st.info("Sin registros de ingresos en la base de datos.")
+        st.info("Sin registros de ingresos en el archivo.")
 
 # ==========================================
 # PESTAÑA 2: EGRESOS
@@ -395,45 +363,49 @@ with tabs[1]:
             btn_registrar_egresos = st.form_submit_button("Guardar Lote de Egresos")
             
             if btn_registrar_egresos:
-                conn = sqlite3.connect("finanzas.db")
-                c = conn.cursor()
+                df_egr = pd.read_excel(EXCEL_FILE, sheet_name="Egresos")
+                nuevo_id_egr = int(df_egr['Doc #'].max() + 1) if not df_egr.empty and 'Doc #' in df_egr.columns and not df_egr['Doc #'].dropna().empty else 1
+                
                 guardados = 0
+                nuevas_filas = []
                 for cat, desc, monto, moneda, incluir in gastos_input:
                     if incluir and desc and monto > 0:
-                        c.execute(
-                            "INSERT INTO egresos (codigo, anio, mes, tipo, descripcion, monto, moneda) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (codigo_egr, anio_egr, mes_egr, cat, desc, monto, moneda)
-                        )
+                        nuevas_filas.append({
+                            'Doc #': nuevo_id_egr,
+                            'Código': codigo_egr,
+                            'Año': anio_egr,
+                            'Mes': mes_egr,
+                            'Tipo': cat,
+                            'Descripción': desc,
+                            'Monto': monto,
+                            'Moneda': moneda
+                        })
+                        nuevo_id_egr += 1
                         guardados += 1
-                conn.commit()
-                conn.close()
+                
                 if guardados > 0:
+                    df_nuevos = pd.DataFrame(nuevas_filas)
+                    df_egr = pd.concat([df_egr, df_nuevos], ignore_index=True)
+                    
+                    with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                        pd.read_excel(EXCEL_FILE, sheet_name='Ingresos').to_excel(writer, sheet_name='Ingresos', index=False)
+                        df_egr.to_excel(writer, sheet_name='Egresos', index=False)
+                    
                     st.session_state.cant_egresos_adicionales = 0
-                    exportar_respaldo_csv(sincronizar=True)
-                    st.success(f"Documento {codigo_egr} guardado y guardado localmente con {guardados} partidas.")
+                    st.success(f"Documento Lote {codigo_egr} guardado y actualizado en el Excel con {guardados} partidas.")
                     st.rerun()
                 else:
                     st.warning("Ingrese al menos una partida con descripción e importe mayor a cero.")
 
     st.markdown("#### Documentos de Egresos Registrados")
-    conn = sqlite3.connect("finanzas.db")
-    df_egresos = pd.read_sql_query("SELECT id, codigo AS 'Código', anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos", conn)
-    conn.close()
+    try:
+        df_egresos = pd.read_excel(EXCEL_FILE, sheet_name="Egresos")
+    except Exception:
+        df_egresos = pd.DataFrame(columns=['Doc #', 'Código', 'Año', 'Mes', 'Tipo', 'Descripción', 'Monto', 'Moneda'])
 
-    if not df_egresos.empty:
-        col_btn1, col_btn2 = st.columns([1, 2])
-        with col_btn1:
-            st.download_button(
-                label="📥 Descargar Egresos (.csv)",
-                data=exportar_dataframe_a_csv(df_egresos[['Código', 'Año', 'Mes', 'Tipo', 'Descripción', 'Monto', 'Moneda']]),
-                file_name=f"Egresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-
-
+    if not df_egresos.empty and 'Código' in df_egresos.columns:
         st.markdown("##### ✏️ Modificación / Eliminación de Lote de Egresos")
-        codigos_unicos = df_egresos['Código'].unique().tolist()
+        codigos_unicos = df_egresos['Código'].dropna().unique().tolist()
         col_ed_eg1, col_ed_eg2, col_ed_eg3 = st.columns([2, 1, 1])
         cod_egr_sel = col_ed_eg1.selectbox("Seleccionar Documento Lote (Código)", codigos_unicos, key="select_egr_edit")
         
@@ -441,15 +413,13 @@ with tabs[1]:
             st.session_state.edit_egreso_codigo = cod_egr_sel
 
         if col_ed_eg3.button("🗑️ Eliminar Lote Completo", key="btn_del_egr"):
-            conn = sqlite3.connect("finanzas.db")
-            c = conn.cursor()
-            c.execute("DELETE FROM egresos WHERE codigo=?", (cod_egr_sel,))
-            conn.commit()
-            conn.close()
+            df_egresos = df_egresos[df_egresos['Código'] != cod_egr_sel]
+            with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                pd.read_excel(EXCEL_FILE, sheet_name='Ingresos').to_excel(writer, sheet_name='Ingresos', index=False)
+                df_egresos.to_excel(writer, sheet_name='Egresos', index=False)
             if st.session_state.edit_egreso_codigo == cod_egr_sel:
                 st.session_state.edit_egreso_codigo = None
-            exportar_respaldo_csv(sincronizar=True)
-            st.success(f"Documento Lote {cod_egr_sel} eliminado exitosamente.")
+            st.success(f"Documento Lote {cod_egr_sel} eliminado y actualizado en el Excel.")
             st.rerun()
 
         if st.session_state.edit_egreso_codigo:
@@ -457,8 +427,8 @@ with tabs[1]:
             with st.expander(f"📝 Editando Partidas del Documento Lote: {st.session_state.edit_egreso_codigo}", expanded=True):
                 with st.form(key="form_edit_egreso_lote"):
                     c_head1, c_head2 = st.columns(2)
-                    anio_lote_val = int(sub_egr['Año'].iloc[0])
-                    mes_lote_val = sub_egr['Mes'].iloc[0]
+                    anio_lote_val = int(sub_egr['Año'].iloc[0]) if not sub_egr.empty else ANIO_ACTUAL
+                    mes_lote_val = sub_egr['Mes'].iloc[0] if not sub_egr.empty else MESES[0]
                     
                     anio_eg_edit = c_head1.selectbox("Ejercicio (Año)", ANIOS, index=ANIOS.index(anio_lote_val) if anio_lote_val in ANIOS else 0, key="edit_lote_anio")
                     mes_eg_edit = c_head2.selectbox("Período Mensual", MESES, index=MESES.index(mes_lote_val) if mes_lote_val in MESES else 0, key="edit_lote_mes")
@@ -466,41 +436,34 @@ with tabs[1]:
                     
                     items_editados = []
                     for idx_p, row_p in sub_egr.iterrows():
-                        p_id = row_p['id']
+                        p_id = row_p['Doc #']
                         c1, c2, c3, c4 = st.columns([2, 3, 2, 2])
-                        tipo_p = c1.selectbox(f"Categoría #{p_id}", TIPOS_EGRESO, index=TIPOS_EGRESO.index(row_p['Tipo']) if row_p['Tipo'] in TIPOS_EGRESO else 0, key=f"edit_p_tipo_{p_id}")
-                        desc_p = c2.text_input(f"Descripción #{p_id}", value=row_p['Descripción'], key=f"edit_p_desc_{p_id}")
-                        monto_p = c3.number_input(f"Monto #{p_id}", value=float(row_p['Monto']), min_value=0.0, format="%.2f", key=f"edit_p_monto_{p_id}")
-                        moneda_p = c4.selectbox(f"Moneda #{p_id}", MONEDAS, index=MONEDAS.index(row_p['Moneda']) if row_p['Moneda'] in MONEDAS else 0, key=f"edit_p_moneda_{p_id}")
-                        items_editados.append((p_id, tipo_p, desc_p, monto_p, moneda_p))
+                        tipo_p = c1.selectbox(f"Categoría #{idx_p}", TIPOS_EGRESO, index=TIPOS_EGRESO.index(row_p['Tipo']) if row_p['Tipo'] in TIPOS_EGRESO else 0, key=f"edit_p_tipo_{idx_p}")
+                        desc_p = c2.text_input(f"Descripción #{idx_p}", value=row_p['Descripción'], key=f"edit_p_desc_{idx_p}")
+                        monto_p = c3.number_input(f"Monto #{idx_p}", value=float(row_p['Monto']), min_value=0.0, format="%.2f", key=f"edit_p_monto_{idx_p}")
+                        moneda_p = c4.selectbox(f"Moneda #{idx_p}", MONEDAS, index=MONEDAS.index(row_p['Moneda']) if row_p['Moneda'] in MONEDAS else 0, key=f"edit_p_moneda_{idx_p}")
+                        items_editados.append((idx_p, tipo_p, desc_p, monto_p, moneda_p))
 
                     btn_update_egr = st.form_submit_button("💾 Actualizar Lote Completo")
                     if btn_update_egr:
-                        conn = sqlite3.connect("finanzas.db")
-                        c = conn.cursor()
-                        for p_id, tipo_p, desc_p, monto_p, moneda_p in items_editados:
-                            c.execute("""
-                                UPDATE egresos
-                                SET anio=?, mes=?, tipo=?, descripcion=?, monto=?, moneda=?
-                                WHERE id=?
-                            """, (anio_eg_edit, mes_eg_edit, tipo_p, desc_p, monto_p, moneda_p, p_id))
-                        conn.commit()
-                        conn.close()
+                        for idx_p, tipo_p, desc_p, monto_p, moneda_p in items_editados:
+                            df_egresos.loc[df_egresos.index == idx_p, ['Año', 'Mes', 'Tipo', 'Descripción', 'Monto', 'Moneda']] = [anio_eg_edit, mes_eg_edit, tipo_p, desc_p, monto_p, moneda_p]
+                        
+                        with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                            pd.read_excel(EXCEL_FILE, sheet_name='Ingresos').to_excel(writer, sheet_name='Ingresos', index=False)
+                            df_egresos.to_excel(writer, sheet_name='Egresos', index=False)
                         st.session_state.edit_egreso_codigo = None
-                        exportar_respaldo_csv(sincronizar=True)
-                        st.success(f"Documento Lote {cod_egr_sel} actualizado y guardado localmente.")
+                        st.success(f"Documento Lote {cod_egr_sel} actualizado y sincronizado en el Excel.")
                         st.rerun()
 
         st.markdown("##### 🔍 Consulta de Partidas por Lista Desplegable de Lotes")
-        
-        # Crear etiquetas descriptivas para cada código en la lista desplegable
         opciones_lotes = {}
         for cod in codigos_unicos:
             sub_df = df_egresos[df_egresos['Código'] == cod]
-            anio_val = sub_df['Año'].iloc[0]
-            mes_val = sub_df['Mes'].iloc[0]
-            sum_pen = sub_df[sub_df['Moneda'] == 'PEN']['Monto'].sum()
-            sum_usd = sub_df[sub_df['Moneda'] == 'USD']['Monto'].sum()
+            anio_val = sub_df['Año'].iloc[0] if not sub_df.empty else ""
+            mes_val = sub_df['Mes'].iloc[0] if not sub_df.empty else ""
+            sum_pen = sub_df[sub_df['Moneda'] == 'PEN']['Monto'].sum() if 'Moneda' in sub_df.columns else 0
+            sum_usd = sub_df[sub_df['Moneda'] == 'USD']['Monto'].sum() if 'Moneda' in sub_df.columns else 0
             label = f"Documento Lote: {cod} | Período: {mes_val} {anio_val} | Total PEN: S/ {sum_pen:,.2f} | Total USD: $ {sum_usd:,.2f}"
             opciones_lotes[label] = cod
 
@@ -510,14 +473,12 @@ with tabs[1]:
             cod_seleccionado = opciones_lotes[selected_label]
             sub_df_sel = df_egresos[df_egresos['Código'] == cod_seleccionado]
             
-            # Mostrar resumen general del registro
-            sum_p = sub_df_sel[sub_df_sel['Moneda'] == 'PEN']['Monto'].sum()
-            sum_u = sub_df_sel[sub_df_sel['Moneda'] == 'USD']['Monto'].sum()
+            sum_p = sub_df_sel[sub_df_sel['Moneda'] == 'PEN']['Monto'].sum() if 'Moneda' in sub_df_sel.columns else 0
+            sum_u = sub_df_sel[sub_df_sel['Moneda'] == 'USD']['Monto'].sum() if 'Moneda' in sub_df_sel.columns else 0
             cant_partidas = len(sub_df_sel)
             
             st.info(f"📋 **Resumen General - Lote {cod_seleccionado}**: {cant_partidas} partidas registradas | Total PEN: S/ {sum_p:,.2f} | Total USD: $ {sum_u:,.2f}")
             
-            # Vista de tabla completa del lote dentro de un expander / lista desplegable de detalle
             with st.expander(f"🔍 Ver vista de tabla completa del lote {cod_seleccionado} (Detalle de partidas)"):
                 st.dataframe(sub_df_sel[['Tipo', 'Descripción', 'Monto', 'Moneda']], use_container_width=True)
     else:
@@ -535,19 +496,18 @@ with tabs[2]:
     meses_sel = col_f2.multiselect("Seleccionar Mes(es)", MESES, default=MESES[:NOW.month], key="dash_meses")
 
     if anios_sel and meses_sel:
-        conn = sqlite3.connect("finanzas.db")
-        # Consultar todos los ingresos y egresos para filtrar con multiselección en Pandas
-        df_ing_all = pd.read_sql_query("SELECT 'INGRESO' AS TipoRegistro, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos", conn)
-        df_egr_all = pd.read_sql_query("SELECT 'EGRESO' AS TipoRegistro, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos", conn)
-        conn.close()
+        try:
+            df_ing_all = pd.read_excel(EXCEL_FILE, sheet_name="Ingresos")
+            df_egr_all = pd.read_excel(EXCEL_FILE, sheet_name="Egresos")
+        except Exception:
+            df_ing_all = pd.DataFrame(columns=['Año', 'Mes', 'Tipo', 'Descripción', 'Monto', 'Moneda'])
+            df_egr_all = pd.DataFrame(columns=['Año', 'Mes', 'Tipo', 'Descripción', 'Monto', 'Moneda'])
 
-        # Filtrar por años y meses seleccionados
-        df_ing_f = df_ing_all[(df_ing_all['Año'].isin(anios_sel)) & (df_ing_all['Mes'].isin(meses_sel))]
-        df_egr_f = df_egr_all[(df_egr_all['Año'].isin(anios_sel)) & (df_egr_all['Mes'].isin(meses_sel))]
+        df_ing_f = df_ing_all[(df_ing_all['Año'].isin(anios_sel)) & (df_ing_all['Mes'].isin(meses_sel))] if not df_ing_all.empty else pd.DataFrame()
+        df_egr_f = df_egr_all[(df_egr_all['Año'].isin(anios_sel)) & (df_egr_all['Mes'].isin(meses_sel))] if not df_egr_all.empty else pd.DataFrame()
 
-        # Totales generales en PEN
-        ing_total_pen = df_ing_f[df_ing_f['Moneda'] == 'PEN']['Monto'].sum()
-        egr_total_pen = df_egr_f[df_egr_f['Moneda'] == 'PEN']['Monto'].sum()
+        ing_total_pen = df_ing_f[df_ing_f['Moneda'] == 'PEN']['Monto'].sum() if not df_ing_f.empty and 'Moneda' in df_ing_f.columns else 0
+        egr_total_pen = df_egr_f[df_egr_f['Moneda'] == 'PEN']['Monto'].sum() if not df_egr_f.empty and 'Moneda' in df_egr_f.columns else 0
         superavit_pen = ing_total_pen - egr_total_pen
         tasa_ahorro_global = (superavit_pen / ing_total_pen * 100) if ing_total_pen > 0 else 0.0
 
@@ -563,17 +523,15 @@ with tabs[2]:
         st.markdown("---")
         st.markdown("#### 📈 Gráficas Comparativas por Mes y Año")
         
-        # Agrupar por mes y tipo para graficar
         if not df_ing_f.empty or not df_egr_f.empty:
-            df_ing_grp = df_ing_f[df_ing_f['Moneda'] == 'PEN'].groupby('Mes')['Monto'].sum().reindex(MESES).fillna(0)
-            df_egr_grp = df_egr_f[df_egr_f['Moneda'] == 'PEN'].groupby('Mes')['Monto'].sum().reindex(MESES).fillna(0)
+            df_ing_grp = df_ing_f[df_ing_f['Moneda'] == 'PEN'].groupby('Mes')['Monto'].sum().reindex(MESES).fillna(0) if not df_ing_f.empty else pd.Series(0, index=MESES)
+            df_egr_grp = df_egr_f[df_egr_f['Moneda'] == 'PEN'].groupby('Mes')['Monto'].sum().reindex(MESES).fillna(0) if not df_egr_f.empty else pd.Series(0, index=MESES)
             
             df_chart = pd.DataFrame({
                 'Ingresos (PEN)': df_ing_grp,
                 'Egresos (PEN)': df_egr_grp
             })
             
-            # Filtrar solo los meses que el usuario seleccionó para que el gráfico sea limpio
             df_chart_filtered = df_chart.loc[meses_sel]
             st.bar_chart(df_chart_filtered)
         else:
@@ -582,9 +540,7 @@ with tabs[2]:
         st.markdown("---")
         st.markdown("#### 💡 Asesoría y Recomendaciones de Especialista en Finanzas Personales")
         
-        # Análisis automatizado estilo especialista financiero
         recomendaciones = []
-        
         if tasa_ahorro_global < 10:
             recomendaciones.append("🚨 **Alerta de Tasa de Ahorro Crítica:** Su tasa de ahorro actual está por debajo del 10%. Como especialista en finanzas personales, le sugiero aplicar la regla **50/30/20** (50% necesidades básicas, 30% gastos personales y 20% ahorro e inversión intocable).")
         elif 10 <= tasa_ahorro_global < 20:
@@ -597,13 +553,12 @@ with tabs[2]:
         else:
             recomendaciones.append("🛡️ **Fondo de Emergencia:** Asegúrese de mantener un fondo de emergencia equivalente a 3 o 6 meses de sus egresos totales guardado en una cuenta líquida separada.")
 
-        # Mostrar recomendaciones en cajitas visuales
         for rec in recomendaciones:
             st.info(rec)
 
         st.markdown("---")
         st.markdown("##### 📋 Detalle Analítico de Transacciones Filtradas")
-        df_completo_filtrado = pd.concat([df_ing_f, df_egr_f], ignore_index=True)
+        df_completo_filtrado = pd.concat([df_ing_f, df_egr_f], ignore_index=True) if not df_ing_f.empty or not df_egr_f.empty else pd.DataFrame()
         st.dataframe(df_completo_filtrado, use_container_width=True)
     else:
         st.warning("Por favor, seleccione al menos un año y un mes en los filtros superiores para generar el análisis financiero.")
