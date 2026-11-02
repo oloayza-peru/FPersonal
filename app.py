@@ -338,4 +338,4 @@ with tabs[1]:
             gastos_input = []
             
             st.markdown("**Partidas Fijas de Gastos**")
-            for i, (cat, desc) in enumerate
+            for: i, (cat, desc) in enumerate
