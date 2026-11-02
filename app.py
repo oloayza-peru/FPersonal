@@ -131,18 +131,26 @@ def cargar_estilos_sap():
 
 cargar_estilos_sap()
 
-# --- BARRA LATERAL / PANEL DE CONTROL ---
+# --- BARRA LATERAL / PANEL DE CONTROL Y CARGA DESDE ONEDRIVE ---
 with st.sidebar:
     st.markdown("### ⚙️ Conexión Cloud (OneDrive)")
-    st.markdown("[🔗 Abrir OneDrive Online](https://1drv.ms/x/c/f2550978c0f7f8d5/IQCbpvC_igOlS4veC_-Pl1fPAdhDS8b5yrSeblI8uyQAIog?e=b82J1A)")
+    st.markdown(f"[🔗 Abrir OneDrive Online]({ONEDRIVE_URL})")
     st.markdown("---")
-    st.markdown("### 🔄 Sincronización de Datos")
-    if st.button("🔄 Actualizar", use_container_width=True):
+    st.markdown("### 📥 Importar Excel de OneDrive")
+    uploaded_excel = st.file_uploader("Sube tu Excel de OneDrive (.xlsx)", type=["xlsx"])
+    
+    if uploaded_excel is not None:
+        with open(EXCEL_FILE, "wb") as f:
+            f.write(uploaded_excel.getbuffer())
+        st.success("¡Datos importados con éxito desde tu archivo de OneDrive!")
+        st.rerun()
+        
+    st.markdown("---")
+    if st.button("🔄 Recargar Vista", use_container_width=True):
         st.cache_data.clear()
-        st.success("¡Datos importados y actualizados correctamente desde el archivo Excel de OneDrive / local!")
         st.rerun()
     st.markdown("---")
-    st.info("Al registrar, modificar o eliminar transacciones, se sincronizan automáticamente con el archivo Control_Financiero.xlsx.")
+    st.info("Sube el archivo descargado de OneDrive al iniciar para sincronizar tus registros.")
 
 # --- CONSTANTES Y FECHA ACTUAL ---
 MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
