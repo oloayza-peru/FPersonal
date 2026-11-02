@@ -1,3 +1,18 @@
+
+def generar_excel_ingresos_egresos() -> bytes:
+    conn = sqlite3.connect("finanzas.db")
+    df_ing = pd.read_sql_query("SELECT id AS 'Doc #', anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos", conn)
+    df_egr = pd.read_sql_query("SELECT id AS 'Doc #', codigo AS Código, anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos", conn)
+    conn.close()
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_ing.to_excel(writer, sheet_name='Ingresos', index=False)
+        df_egr.to_excel(writer, sheet_name='Egresos', index=False)
+    
+    return output.getvalue()
+
+
 import pandas as pd
 import streamlit as st
 import sqlite3
@@ -193,17 +208,27 @@ def exportar_respaldo_csv(sincronizar=False):
     df_total.to_csv("respaldo_finanzas.csv", index=False)
 
 # --- CABECERA SAP FIORI ---
-shell_bar_html = f"""
+shell_bar_html = """
 <div class="sap-shell-bar">
     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
         <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
-        <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 {DRIVE_FOLDER_NAME} (.csv)</a>
-        <a href="{SHEETS_REGISTROS_URL}" target="_blank" class="sap-drive-link">📊 Excel Registros</a>
     </div>
     <div class="sap-shell-badge">SAP Horizon</div>
 </div>
 """
 st.html(shell_bar_html)
+
+# Botón de descarga general de Excel consolidado en la parte superior o lateral
+col_down_1, col_down_2 = st.columns([3, 1])
+with col_down_2:
+    excel_data = generar_excel_ingresos_egresos()
+    st.download_button(
+        label="📥 Descargar Todo (.xlsx)",
+        data=excel_data,
+        file_name=f"Control_Financiero_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 
 tabs = st.tabs(["💵 Gestor de Ingresos", "💸 Gestor de Egresos", "📊 Dashboard Analítico"])
 
@@ -261,10 +286,7 @@ with tabs[0]:
                 mime="text/csv",
                 use_container_width=True
             )
-        with col_btn2:
-            st.html(
-                f'<a href="{DRIVE_FOLDER_URL}" target="_blank" style="text-decoration:none;"><button style="width:100%; height: 42px; background-color:#0070F2; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">☁️ Guardar / Subir archivo .csv en Carpeta Personal (Drive)</button></a>'
-            )
+
 
         st.dataframe(df_ingresos, use_container_width=True)
 
@@ -408,10 +430,7 @@ with tabs[1]:
                 mime="text/csv",
                 use_container_width=True
             )
-        with col_btn2:
-            st.html(
-                f'<a href="{DRIVE_FOLDER_URL}" target="_blank" style="text-decoration:none;"><button style="width:100%; height: 42px; background-color:#0070F2; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">☁️ Guardar / Subir archivo .csv en Carpeta Personal (Drive)</button></a>'
-            )
+
 
         st.markdown("##### ✏️ Modificación / Eliminación de Lote de Egresos")
         codigos_unicos = df_egresos['Código'].unique().tolist()
@@ -511,10 +530,7 @@ with tabs[2]:
                 mime="text/csv",
                 use_container_width=True
             )
-        with col_btn2:
-            st.html(
-                f'<a href="{DRIVE_FOLDER_URL}" target="_blank" style="text-decoration:none;"><button style="width:100%; height: 42px; background-color:#0070F2; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer;">☁️ Guardar / Subir archivo .csv en Carpeta Personal (Drive)</button></a>'
-            )
+
 
     ing_pen = df_ing_m[df_ing_m['Moneda'] == 'PEN']['Monto'].sum()
     egr_pen = df_egr_m[df_egr_m['Moneda'] == 'PEN']['Monto'].sum()
