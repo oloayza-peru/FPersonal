@@ -491,61 +491,110 @@ with tabs[1]:
                         st.success(f"Documento Lote {cod_egr_sel} actualizado y guardado localmente.")
                         st.rerun()
 
+        st.markdown("##### 🔍 Consulta de Partidas por Lista Desplegable de Lotes")
+        
+        # Crear etiquetas descriptivas para cada código en la lista desplegable
+        opciones_lotes = {}
         for cod in codigos_unicos:
             sub_df = df_egresos[df_egresos['Código'] == cod]
             anio_val = sub_df['Año'].iloc[0]
             mes_val = sub_df['Mes'].iloc[0]
             sum_pen = sub_df[sub_df['Moneda'] == 'PEN']['Monto'].sum()
             sum_usd = sub_df[sub_df['Moneda'] == 'USD']['Monto'].sum()
+            label = f"Documento Lote: {cod} | Período: {mes_val} {anio_val} | Total PEN: S/ {sum_pen:,.2f} | Total USD: $ {sum_usd:,.2f}"
+            opciones_lotes[label] = cod
 
-            with st.expander(f"Documento Lote: {cod} | Período: {mes_val} {anio_val} | Total PEN: S/ {sum_pen:,.2f} | Total USD: $ {sum_usd:,.2f}"):
-                st.dataframe(sub_df[['Tipo', 'Descripción', 'Monto', 'Moneda']], use_container_width=True)
+        selected_label = st.selectbox("Seleccionar Documento Lote para visualizar partidas", list(opciones_lotes.keys()), key="select_ver_lote")
+        
+        if selected_label:
+            cod_seleccionado = opciones_lotes[selected_label]
+            sub_df_sel = df_egresos[df_egresos['Código'] == cod_seleccionado]
+            st.markdown(f"**Detalle del Lote Seleccionado: {cod_seleccionado}**")
+            st.dataframe(sub_df_sel[['Tipo', 'Descripción', 'Monto', 'Moneda']], use_container_width=True)
     else:
         st.info("No hay documentos de egresos registrados.")
 
 # ==========================================
-# PESTAÑA 3: DASHBOARD DE CONTROL Y SALDOS
+# PESTAÑA 3: DASHBOARD ANALÍTICO Y ASESORÍA FINANCIERA
 # ==========================================
 with tabs[2]:
-    st.subheader("Análisis KPI y Balance de Cierre")
+    st.subheader("Dashboard Analítico Avanzado y Plan de Salud Financiera")
     
+    st.markdown("##### ⚙️ Filtros de Comparativa Multi-Período")
     col_f1, col_f2 = st.columns(2)
-    anio_sel = col_f1.selectbox("Filtrar Ejercicio", ANIOS, index=ANIO_ACTUAL_INDEX, key="dash_anio")
-    mes_sel = col_f2.selectbox("Filtrar Período", MESES, index=MES_ACTUAL_INDEX, key="dash_mes")
+    anios_sel = col_f1.multiselect("Seleccionar Ejercicio(s)", ANIOS, default=[ANIO_ACTUAL], key="dash_anios")
+    meses_sel = col_f2.multiselect("Seleccionar Mes(es)", MESES, default=MESES[:NOW.month], key="dash_meses")
 
-    conn = sqlite3.connect("finanzas.db")
-    df_ing_m = pd.read_sql_query("SELECT 'INGRESO' AS Tipo, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos WHERE anio=? AND mes=?", conn, params=(anio_sel, mes_sel))
-    df_egr_m = pd.read_sql_query("SELECT 'EGRESO' AS Tipo, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos WHERE anio=? AND mes=?", conn, params=(anio_sel, mes_sel))
-    conn.close()
+    if anios_sel and meses_sel:
+        conn = sqlite3.connect("finanzas.db")
+        # Consultar todos los ingresos y egresos para filtrar con multiselección en Pandas
+        df_ing_all = pd.read_sql_query("SELECT 'INGRESO' AS TipoRegistro, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos", conn)
+        df_egr_all = pd.read_sql_query("SELECT 'EGRESO' AS TipoRegistro, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos", conn)
+        conn.close()
 
-    df_consolidado = pd.concat([df_ing_m, df_egr_m], ignore_index=True)
+        # Filtrar por años y meses seleccionados
+        df_ing_f = df_ing_all[(df_ing_all['Año'].isin(anios_sel)) & (df_ing_all['Mes'].isin(meses_sel))]
+        df_egr_f = df_egr_all[(df_egr_all['Año'].isin(anios_sel)) & (df_egr_all['Mes'].isin(meses_sel))]
 
-    if not df_consolidado.empty:
-        col_btn1, col_btn2 = st.columns([1, 2])
-        with col_btn1:
-            st.download_button(
-                label="📥 Descargar Balance Mensual (.csv)",
-                data=exportar_dataframe_a_csv(df_consolidado),
-                file_name=f"Balance_{mes_sel}_{anio_sel}_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+        # Totales generales en PEN
+        ing_total_pen = df_ing_f[df_ing_f['Moneda'] == 'PEN']['Monto'].sum()
+        egr_total_pen = df_egr_f[df_egr_f['Moneda'] == 'PEN']['Monto'].sum()
+        superavit_pen = ing_total_pen - egr_total_pen
+        tasa_ahorro_global = (superavit_pen / ing_total_pen * 100) if ing_total_pen > 0 else 0.0
 
+        st.markdown("---")
+        st.markdown("#### 📊 Resumen Estadístico Consolidado (Períodos Seleccionados)")
+        
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("Ingresos Totales (PEN)", f"S/ {ing_total_pen:,.2f}")
+        kpi2.metric("Egresos Totales (PEN)", f"S/ {egr_total_pen:,.2f}")
+        kpi3.metric("Superávit / Flujo Neto", f"S/ {superavit_pen:,.2f}", delta=f"{tasa_ahorro_global:.1f}% Ahorro")
+        kpi4.metric("Tasa de Ahorro Neto", f"{tasa_ahorro_global:.1f}%", delta="Meta: ≥ 20%")
 
-    ing_pen = df_ing_m[df_ing_m['Moneda'] == 'PEN']['Monto'].sum()
-    egr_pen = df_egr_m[df_egr_m['Moneda'] == 'PEN']['Monto'].sum()
-    balance_pen = ing_pen - egr_pen
+        st.markdown("---")
+        st.markdown("#### 📈 Gráficas Comparativas por Mes y Año")
+        
+        # Agrupar por mes y tipo para graficar
+        if not df_ing_f.empty or not df_egr_f.empty:
+            df_ing_grp = df_ing_f[df_ing_f['Moneda'] == 'PEN'].groupby('Mes')['Monto'].sum().reindex(MESES).fillna(0)
+            df_egr_grp = df_egr_f[df_egr_f['Moneda'] == 'PEN'].groupby('Mes')['Monto'].sum().reindex(MESES).fillna(0)
+            
+            df_chart = pd.DataFrame({
+                'Ingresos (PEN)': df_ing_grp,
+                'Egresos (PEN)': df_egr_grp
+            })
+            
+            # Filtrar solo los meses que el usuario seleccionó para que el gráfico sea limpio
+            df_chart_filtered = df_chart.loc[meses_sel]
+            st.bar_chart(df_chart_filtered)
+        else:
+            st.info("No hay suficientes transacciones en PEN para los períodos seleccionados para mostrar gráficos.")
 
-    st.markdown(f"##### Reporte de Balance de Período ({mes_sel} {anio_sel})")
-    
-    kpi1, kpi2, kpi3 = st.columns(3)
-    
-    kpi1.metric("Ingresos Totales (PEN)", f"S/ {ing_pen:,.2f}")
-    kpi2.metric("Egresos Totales (PEN)", f"S/ {egr_pen:,.2f}")
-    kpi3.metric("Flujo Neto / Superávit (PEN)", f"S/ {balance_pen:,.2f}")
+        st.markdown("---")
+        st.markdown("#### 💡 Asesoría y Recomendaciones de Especialista en Finanzas Personales")
+        
+        # Análisis automatizado estilo especialista financiero
+        recomendaciones = []
+        
+        if tasa_ahorro_global < 10:
+            recomendaciones.append("🚨 **Alerta de Tasa de Ahorro Crítica:** Su tasa de ahorro actual está por debajo del 10%. Como especialista en finanzas personales, le sugiero aplicar la regla **50/30/20** (50% necesidades básicas, 30% gastos personales y 20% ahorro e inversión intocable).")
+        elif 10 <= tasa_ahorro_global < 20:
+            recomendaciones.append("⚠️ **Salud Financiera en Desarrollo:** Su tasa de ahorro es positiva pero moderada. Para alcanzar la estabilidad económica a largo plazo, intente recortar un 10% en categorías de gastos discrecionales (entretenimiento, compras extras).")
+        else:
+            recomendaciones.append("🌟 **Excelente Desempeño Financiero:** ¡Felicitaciones! Posee una sólida disciplina de ahorro superior al umbral recomendado del 20%. Es momento de evaluar instrumentos de inversión de renta fija o fondos mutuos para blindar su capital frente a la inflación.")
 
-    st.markdown("---")
-    if ing_pen > 0:
-        tasa_ahorro = (balance_pen / ing_pen) * 100
-        st.progress(max(0.0, min(1.0, balance_pen / ing_pen)))
-        st.caption(f"Tasa de Ahorro Neto alcanzada: **{tasa_ahorro:.1f}%** (Umbral SAP recomendado: ≥ 20.0%)")
+        if egr_total_pen > ing_total_pen:
+            recomendaciones.append("📉 **Déficit Financiero Detectado:** En los períodos seleccionados sus egresos superan a sus ingresos. Es prioritario realizar una auditoría de sus gastos fijos en la pestaña *Egresos* y renegociar pasivos o deudas con tasas elevadas.")
+        else:
+            recomendaciones.append("🛡️ **Fondo de Emergencia:** Asegúrese de mantener un fondo de emergencia equivalente a 3 o 6 meses de sus egresos totales guardado en una cuenta líquida separada.")
+
+        # Mostrar recomendaciones en cajitas visuales
+        for rec in recomendaciones:
+            st.info(rec)
+
+        st.markdown("---")
+        st.markdown("##### 📋 Detalle Analítico de Transacciones Filtradas")
+        df_completo_filtrado = pd.concat([df_ing_f, df_egr_f], ignore_index=True)
+        st.dataframe(df_completo_filtrado, use_container_width=True)
+    else:
+        st.warning("Por favor, seleccione al menos un año y un mes en los filtros superiores para generar el análisis financiero.")
