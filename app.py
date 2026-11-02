@@ -17,10 +17,8 @@ DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Mqp3Lf-U2PC5BXPCr949
 DRIVE_FOLDER_NAME = "Carpeta Personal"
 SHEETS_REGISTROS_URL = "https://docs.google.com/spreadsheets/d/10nh75p-uzJAsXjVJxnMcicEul7pvw4TiZB9tgHExlvA/edit?usp=sharing"
 
-# --- CREDENCIALES DE GITHUB DIRECTAS (CORREGIDAS / SECRETS) ---
-# Nota: Si el token directo sigue dando 401, asegúrate de generarlo nuevamente en GitHub 
-# (Settings -> Developer Settings -> Personal access tokens) con permisos de 'repo'.
-GITHUB_TOKEN = "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"
+# --- CREDENCIALES DE GITHUB NUEVAS ---
+GITHUB_TOKEN = "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"
 GITHUB_REPO = "oloayza-peru/fpersonal"
 
 # --- ESTILOS CSS PERSONALIZADOS (SAP FIORI / HORIZON THEME) ---
@@ -124,7 +122,7 @@ def cargar_estilos_sap():
 
 cargar_estilos_sap()
 
-# --- FUNCION PARA GUARDAR EN GITHUB CON MANEJO DE ERROR 401 ---
+# --- FUNCION PARA GUARDAR EN GITHUB ---
 def sincronizar_con_github(nombre_archivo="respaldo_finanzas.csv"):
     token_val = st.secrets["GITHUB_TOKEN"] if ("GITHUB_TOKEN" in st.secrets) else GITHUB_TOKEN
     repo_val = st.secrets["GITHUB_REPO"] if ("GITHUB_REPO" in st.secrets) else GITHUB_REPO
@@ -157,7 +155,7 @@ def sincronizar_con_github(nombre_archivo="respaldo_finanzas.csv"):
     except Exception as e:
         error_str = str(e)
         if "401" in error_str:
-            st.error("❌ **Error 401 - Bad credentials**: El token de GitHub (`GITHUB_TOKEN`) ha expirado o no tiene permisos de escritura (`repo`). Genere un nuevo Personal Access Token en GitHub e ingréselo en `st.secrets` o actualice la variable.")
+            st.error("❌ **Error 401 - Bad credentials**: El token de GitHub proporcionado no es válido o carece de permisos de escritura (`repo`). Verifique el token.")
         else:
             st.error(f"Error al conectar o guardar en GitHub: {e}")
 
@@ -551,7 +549,7 @@ with tabs[2]:
 
     df_consolidado = pd.concat([df_ing_m, df_egr_m], ignore_index=True)
 
-    if not df_consolidado.frontend if False else not df_consolidado.empty:
+    if not df_consolidado.empty:
         col_btn1, col_btn2 = st.columns([1, 2])
         with col_btn1:
             st.download_button(
@@ -567,7 +565,7 @@ with tabs[2]:
             )
 
     ing_pen = df_ing_m[df_ing_m['Moneda'] == 'PEN']['Monto'].sum()
-    egr_pen = df_egr_m[df_egr_m['Moneda'] == 'Muneda' if 'Muneda' in df_egr_m.columns else df_egr_m['Moneda'] == 'PEN']['Monto'].sum()
+    egr_pen = df_egr_m[df_egr_m['Moneda'] == 'PEN']['Monto'].sum()
     balance_pen = ing_pen - egr_pen
 
     st.markdown(f"##### Reporte de Balance de Período ({mes_sel} {anio_sel})")
@@ -582,4 +580,4 @@ with tabs[2]:
     if ing_pen > 0:
         tasa_ahorro = (balance_pen / ing_pen) * 100
         st.progress(max(0.0, min(1.0, balance_pen / ing_pen)))
-        st.caption(f"Tasa de_ahorro alcanzada: **{tasa_ahorro:.1f}%** (Umbral SAP recomendado: ≥ 20.0%)")
+        st.caption(f"Tasa de Ahorro Neto alcanzada: **{tasa_ahorro:.1f}%** (Umbral SAP recomendado: ≥ 20.0%)")
