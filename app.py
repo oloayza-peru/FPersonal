@@ -3,6 +3,7 @@ import streamlit as st
 import sqlite3
 import io
 from datetime import datetime
+from github import Github
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -117,6 +118,39 @@ def cargar_estilos_sap():
 
 cargar_estilos_sap()
 
+# --- FUNCION PARA AUTO-COMMIT EN GITHUB ---
+def sincronizar_con_github(nombre_archivo="respaldo_finanzas.csv"):
+    if "GITHUB_TOKEN" in st.secrets and "GITHUB_REPO" in st.secrets:
+        try:
+            token = st.secrets["GITHUB_TOKEN"]
+            repo_name = st.secrets["GITHUB_REPO"]
+            g = Github(token)
+            repo = g.get_repo(repo_name)
+            
+            with open(nombre_archivo, "r", encoding="utf-8") as f:
+                contenido = f.read()
+            
+            commit_message = f"Auto-backup: Sincronización desde App ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+            
+            try:
+                contents = repo.get_contents(nombre_archivo)
+                repo.update_file(
+                    path=contents.path,
+                    message=commit_message,
+                    content=contenido,
+                    sha=contents.sha
+                )
+                st.toast("☁️ Copia de seguridad guardada automáticamente en GitHub", icon="✅")
+            except Exception:
+                repo.create_file(
+                    path=nombre_archivo,
+                    message=commit_message,
+                    content=contenido
+                )
+                st.toast("☁️ Archivo de respaldo creado en GitHub", icon="✅")
+        except Exception as e:
+            st.error(f"Error al sincronizar con GitHub: {e}")
+
 # --- INICIALIZACIÓN DE BASE DE DATOS LOCAL ---
 def init_db():
     conn = sqlite3.connect("finanzas.db")
@@ -180,6 +214,9 @@ def exportar_respaldo_csv():
     conn.close()
     df_total = pd.concat([df_ing, df_egr], ignore_index=True)
     df_total.to_csv("respaldo_finanzas.csv", index=False)
+    
+    # Sincronizar automáticamente el archivo actualizado con GitHub
+    sincronizar_con_github("respaldo_finanzas.csv")
 
 # --- CABECERA SAP FIORI ---
 shell_bar_html = f"""
