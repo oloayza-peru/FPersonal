@@ -1,3 +1,4 @@
+
 def generar_excel_ingresos_egresos() -> bytes:
     conn = sqlite3.connect("finanzas.db")
     df_ing = pd.read_sql_query("SELECT id AS 'Doc #', anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos", conn)
@@ -29,6 +30,8 @@ st.set_page_config(
 DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Mqp3Lf-U2PC5BXPCr949R4y3VbSBVk_B?usp=drive_link"
 DRIVE_FOLDER_NAME = "Carpeta Personal"
 SHEETS_REGISTROS_URL = "https://docs.google.com/spreadsheets/d/10nh75p-uzJAsXjVJxnMcicEul7pvw4TiZB9tgHExlvA/edit?usp=sharing"
+
+# --- CREDENCIALES DE GITHUB NUEVAS ---
 
 # --- ESTILOS CSS PERSONALIZADOS (SAP FIORI / HORIZON THEME) ---
 def cargar_estilos_sap():
@@ -506,28 +509,16 @@ with tabs[1]:
         if selected_label:
             cod_seleccionado = opciones_lotes[selected_label]
             sub_df_sel = df_egresos[df_egresos['Código'] == cod_seleccionado]
-            st.markdown(f"**Detalle del Lote Seleccionado: {cod_seleccionado}**")
             
-            # Crear un selector desplegable para examinar las partidas individuales del lote
-            if not sub_df_sel.empty:
-                opciones_partidas = {}
-                for idx, row in sub_df_sel.iterrows():
-                    partida_label = f"[{row['Tipo']}] {row['Descripción']} - S/ {row['Monto']:,.2f} {row['Moneda']}"
-                    opciones_partidas[partida_label] = row
-
-                selected_partida_label = st.selectbox("Seleccionar Partida Específica del Lote", list(opciones_partidas.keys()), key=f"select_partida_{cod_seleccionado}")
-                
-                if selected_partida_label:
-                    p_info = opciones_partidas[selected_partida_label]
-                    
-                    # Mostrar la partida seleccionada en tarjetas / métricas detalladas
-                    c_p1, c_p2, c_p3 = st.columns(3)
-                    c_p1.metric("Categoría / Tipo", p_info['Tipo'])
-                    c_p2.metric("Concepto / Descripción", p_info['Descripción'])
-                    c_p3.metric("Importe", f"{p_info['Monto']:,.2f} {p_info['Moneda']}")
-
-                st.markdown("---")
-                st.markdown("##### Vista de Tabla Completa del Lote")
+            # Mostrar resumen general del registro
+            sum_p = sub_df_sel[sub_df_sel['Moneda'] == 'PEN']['Monto'].sum()
+            sum_u = sub_df_sel[sub_df_sel['Moneda'] == 'USD']['Monto'].sum()
+            cant_partidas = len(sub_df_sel)
+            
+            st.info(f"📋 **Resumen General - Lote {cod_seleccionado}**: {cant_partidas} partidas registradas | Total PEN: S/ {sum_p:,.2f} | Total USD: $ {sum_u:,.2f}")
+            
+            # Vista de tabla completa del lote dentro de un expander / lista desplegable de detalle
+            with st.expander(f"🔍 Ver vista de tabla completa del lote {cod_seleccionado} (Detalle de partidas)"):
                 st.dataframe(sub_df_sel[['Tipo', 'Descripción', 'Monto', 'Moneda']], use_container_width=True)
     else:
         st.info("No hay documentos de egresos registrados.")
