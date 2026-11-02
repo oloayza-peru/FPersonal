@@ -31,22 +31,7 @@ def init_excel():
 init_excel()
 
 # --- ESTILOS CSS PERSONALIZADOS (SAP FIORI / HORIZON THEME) ---
-def cargar_estilos_sap()
-
-
-# --- BARRA LATERAL / PANEL DE CONTROL ---
-with st.sidebar:
-    st.markdown("### ⚙️ Conexión Cloud (OneDrive)")
-    st.markdown("[🔗 Abrir OneDrive Online](https://1drv.ms/x/c/f2550978c0f7f8d5/IQCbpvC_igOlS4veC_-Pl1fPAdhDS8b5yrSeblI8uyQAIog?e=b82J1A)")
-    st.markdown("---")
-    st.markdown("### 🔄 Sincronización de Datos")
-    if st.button("🔄 Actualizar", use_container_width=True):
-        st.cache_data.clear()
-        st.success("¡Datos importados y actualizados correctamente desde el archivo de OneDrive / local!")
-        st.rerun()
-    st.markdown("---")
-    st.info("Cada vez que modifique, cargue o descargue registros, se reflejarán automáticamente en Streamlit y Excel.")
-:
+def cargar_estilos_sap():
     css = """
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
@@ -146,7 +131,6 @@ with st.sidebar:
 
 cargar_estilos_sap()
 
-
 # --- BARRA LATERAL / PANEL DE CONTROL ---
 with st.sidebar:
     st.markdown("### ⚙️ Conexión Cloud (OneDrive)")
@@ -155,11 +139,10 @@ with st.sidebar:
     st.markdown("### 🔄 Sincronización de Datos")
     if st.button("🔄 Actualizar", use_container_width=True):
         st.cache_data.clear()
-        st.success("¡Datos importados y actualizados correctamente desde el archivo de OneDrive / local!")
+        st.success("¡Datos importados y actualizados correctamente desde el archivo Excel de OneDrive / local!")
         st.rerun()
     st.markdown("---")
-    st.info("Cada vez que modifique, cargue o descargue registros, se reflejarán automáticamente en Streamlit y Excel.")
-
+    st.info("Al registrar, modificar o eliminar transacciones, se sincronizan automáticamente con el archivo Control_Financiero.xlsx.")
 
 # --- CONSTANTES Y FECHA ACTUAL ---
 MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
@@ -468,10 +451,10 @@ with tabs[1]:
                     for idx_p, row_p in sub_egr.iterrows():
                         p_id = row_p['Doc #']
                         c1, c2, c3, c4 = st.columns([2, 3, 2, 2])
-                        tipo_p = c1.selectbox(f"Categoría #{idx_p}", TIPOS_EGRESO, index=TIPOS_EGRESO.index(row_p['Tipo']) if row_p['Tipo'] in TIPOS_EGRESO else 0, key=f"edit_p_tipo_{idx_p}")
-                        desc_p = c2.text_input(f"Descripción #{idx_p}", value=row_p['Descripción'], key=f"edit_p_desc_{idx_p}")
-                        monto_p = c3.number_input(f"Monto #{idx_p}", value=float(row_p['Monto']), min_value=0.0, format="%.2f", key=f"edit_p_monto_{idx_p}")
-                        moneda_p = c4.selectbox(f"Moneda #{idx_p}", MONEDAS, index=MONEDAS.index(row_p['Moneda']) if row_p['Moneda'] in MONEDAS else 0, key=f"edit_p_moneda_{idx_p}")
+                        tipo_p = c1.selectbox(f"Categoría #{p_id}", TIPOS_EGRESO, index=TIPOS_EGRESO.index(row_p['Tipo']) if row_p['Tipo'] in TIPOS_EGRESO else 0, key=f"edit_p_tipo_{p_id}")
+                        desc_p = c2.text_input(f"Descripción #{p_id}", value=row_p['Descripción'], key=f"edit_p_desc_{p_id}")
+                        monto_p = c3.number_input(f"Monto #{p_id}", value=float(row_p['Monto']), min_value=0.0, format="%.2f", key=f"edit_p_monto_{p_id}")
+                        moneda_p = c4.selectbox(f"Moneda #{p_id}", MONEDAS, index=MONEDAS.index(row_p['Moneda']) if row_p['Moneda'] in MONEDAS else 0, key=f"edit_p_moneda_{p_id}")
                         items_editados.append((idx_p, tipo_p, desc_p, monto_p, moneda_p))
 
                     btn_update_egr = st.form_submit_button("💾 Actualizar Lote Completo")
