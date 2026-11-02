@@ -290,4 +290,112 @@ with tabs[1]:
                 c2.text_input(f"Concepto #{i+1}", value=desc, key=f"desc_{i}")
                 monto = c3.number_input(f"Importe #{i+1}", min_value=0.0, format="%.2f", key=f"monto_{i}")
                 moneda = c4.selectbox(f"Moneda #{i+1}", MONEDAS, key=f"moneda_{i}")
-                incluir = c5.checkbox("Activo", value=True, key=f"inc
+                incluir = c5.checkbox("Activo", value=True, key=f"inc_{i}")
+                gastos_input.append((cat, desc, monto, moneda, incluir))
+
+            if st.session_state.cant_egresos_adicionales > 0:
+                st.markdown("**Partidas Adicionales (No Fijas)**")
+                for j in range(st.session_state.cant_egresos_adicionales):
+                    idx = len(EGRESOS_FIJOS_BASE) + j
+                    c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 2, 1])
+                    cat_val = c1.selectbox(f"Categoría #{idx+1}", TIPOS_EGRESO, key=f"cat_{idx}")
+                    desc_val = c2.text_input(f"Concepto #{idx+1}", key=f"desc_{idx}", placeholder="Ej. Reparación, Compra Extra")
+                    monto_val = c3.number_input(f"Importe #{idx+1}", min_value=0.0, format="%.2f", key=f"monto_{idx}")
+                    moneda_val = c4.selectbox(f"Moneda #{idx+1}", MONEDAS, key=f"moneda_{idx}")
+                    inc_val = c5.checkbox("Activo", value=True, key=f"inc_{idx}")
+                    gastos_input.append((cat_val, desc_val, monto_val, moneda_val, inc_val))
+
+            st.markdown("---")
+            btn_registrar_egresos = st.form_submit_button("Guardar")
+            
+            if btn_registrar_egresos:
+                conn = sqlite3.connect("finanzas.db")
+                c = conn.cursor()
+                guardados = 0
+                for cat, desc, monto, moneda, incluir in gastos_input:
+                    if incluir and desc and monto > 0:
+                        c.execute(
+                            "INSERT INTO egresos (codigo, anio, mes, tipo, descripcion, monto, moneda) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (codigo_egr, anio_egr, mes_egr, cat, desc, monto, moneda)
+                        )
+                        guardados += 1
+                conn.commit()
+                conn.close()
+                if guardados > 0:
+                    st.session_state.cant_egresos_adicionales = 0
+                    exportar_respaldo_csv()
+                    st.success(f"Documento {codigo_egr} guardado exitosamente con {guardados} partidas.")
+                    st.rerun()
+                else:
+                    st.warning("Ingrese al menos una partida con descripción e importe mayor a cero.")
+
+    st.markdown("#### Documentos de Egresos Registrados")
+    conn = sqlite3.connect("finanzas.db")
+    df_egresos = pd.read_sql_query("SELECT codigo AS 'Código', anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos", conn)
+    conn.close()
+
+    if not df_egresos.empty:
+        excel_bytes_egr = exportar_dataframe_a_excel(df_egresos, sheet_name="Egresos")
+        st.download_button(
+            label="📥 Descargar Egresos (Excel)",
+            data=excel_bytes_egr,
+            file_name=f"Egresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        
+        codigos_unicos = df_egresos['Código'].unique()
+        for cod in codigos_unicos:
+            sub_df = df_egresos[df_egresos['Código'] == cod]
+            anio_val = sub_df['Año'].iloc[0]
+            mes_val = sub_df['Mes'].iloc[0]
+            sum_pen = sub_df[sub_df['Moneda'] == 'PEN']['Monto'].sum()
+            sum_usd = sub_df[sub_df['Moneda'] == 'USD']['Monto'].sum()
+
+            with st.expander(f"Documento Lote: {cod} | Período: {mes_val} {anio_val} | Total PEN: S/ {sum_pen:,.2f} | Total USD: $ {sum_usd:,.2f}"):
+                st.dataframe(sub_df[['Tipo', 'Descripción', 'Monto', 'Moneda']], use_container_width=True)
+    else:
+        st.info("No hay documentos de egresos registrados.")
+
+# ==========================================
+# PESTAÑA 3: DASHBOARD DE CONTROL Y SALDOS
+# ==========================================
+with tabs[2]:
+    st.subheader("Análisis KPI y Balance de Cierre")
+    
+    col_f1, col_f2 = st.columns(2)
+    anio_sel = col_f1.selectbox("Filtrar Ejercicio", ANIOS, index=0, key="dash_anio")
+    mes_sel = col_f2.selectbox("Filtrar Período", MESES, index=0, key="dash_mes")
+
+    conn = sqlite3.connect("finanzas.db")
+    df_ing_m = pd.read_sql_query("SELECT 'INGRESO' AS Tipo, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos WHERE anio=? AND mes=?", conn, params=(anio_sel, mes_sel))
+    df_egr_m = pd.read_sql_query("SELECT 'EGRESO' AS Tipo, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM egresos WHERE anio=? AND mes=?", conn, params=(anio_sel, mes_sel))
+    conn.close()
+
+    df_consolidado = pd.concat([df_ing_m, df_egr_m], ignore_index=True)
+
+    if not df_consolidado.empty:
+        excel_bytes_dash = exportar_dataframe_a_excel(df_consolidado, sheet_name=f"Balance_{mes_sel}_{anio_sel}")
+        st.download_button(
+            label="📥 Descargar Balance Mensual (Excel)",
+            data=excel_bytes_dash,
+            file_name=f"Balance_{mes_sel}_{anio_sel}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    ing_pen = df_ing_m[df_ing_m['Moneda'] == 'PEN']['Monto'].sum()
+    egr_pen = df_egr_m[df_egr_m['Moneda'] == 'PEN']['Monto'].sum()
+    balance_pen = ing_pen - egr_pen
+
+    st.markdown(f"##### Reporte de Balance de Período ({mes_sel} {anio_sel})")
+    
+    kpi1, kpi2, kpi3 = st.columns(3)
+    
+    kpi1.metric("Ingresos Totales (PEN)", f"S/ {ing_pen:,.2f}")
+    kpi2.metric("Egresos Totales (PEN)", f"S/ {egr_pen:,.2f}")
+    kpi3.metric("Flujo Neto / Superávit (PEN)", f"S/ {balance_pen:,.2f}")
+
+    st.markdown("---")
+    if ing_pen > 0:
+        tasa_ahorro = (balance_pen / ing_pen) * 100
+        st.progress(max(0.0, min(1.0, balance_pen / ing_pen)))
+        st.caption(f"Tasa de Ahorro Neto alcanzada: **{tasa_ahorro:.1f}%** (Umbral SAP recomendado: ≥ 20.0%)")
