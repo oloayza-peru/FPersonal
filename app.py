@@ -17,6 +17,10 @@ DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Mqp3Lf-U2PC5BXPCr949
 DRIVE_FOLDER_NAME = "Carpeta Personal"
 SHEETS_REGISTROS_URL = "https://docs.google.com/spreadsheets/d/10nh75p-uzJAsXjVJxnMcicEul7pvw4TiZB9tgHExlvA/edit?usp=sharing"
 
+# --- CREDENCIALES DE GITHUB DIRECTAS ---
+GITHUB_TOKEN = "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"
+GITHUB_REPO = "oloayza-peru/fpersonal"
+
 # --- ESTILOS CSS PERSONALIZADOS (SAP FIORI / HORIZON THEME) ---
 def cargar_estilos_sap():
     css = """
@@ -118,38 +122,35 @@ def cargar_estilos_sap():
 
 cargar_estilos_sap()
 
-# --- FUNCION PARA AUTO-COMMIT EN GITHUB ---
+# --- FUNCION PARA GUARDAR EN GITHUB ---
 def sincronizar_con_github(nombre_archivo="respaldo_finanzas.csv"):
-    if "GITHUB_TOKEN" in st.secrets and "GITHUB_REPO" in st.secrets:
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(GITHUB_REPO)
+        
+        with open(nombre_archivo, "r", encoding="utf-8") as f:
+            contenido = f.read()
+        
+        commit_message = f"Backup manual/automático: Sincronización desde App ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+        
         try:
-            token = st.secrets["GITHUB_TOKEN"]
-            repo_name = st.secrets["GITHUB_REPO"]
-            g = Github(token)
-            repo = g.get_repo(repo_name)
-            
-            with open(nombre_archivo, "r", encoding="utf-8") as f:
-                contenido = f.read()
-            
-            commit_message = f"Auto-backup: Sincronización desde App ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
-            
-            try:
-                contents = repo.get_contents(nombre_archivo)
-                repo.update_file(
-                    path=contents.path,
-                    message=commit_message,
-                    content=contenido,
-                    sha=contents.sha
-                )
-                st.toast("☁️ Copia de seguridad guardada automáticamente en GitHub", icon="✅")
-            except Exception:
-                repo.create_file(
-                    path=nombre_archivo,
-                    message=commit_message,
-                    content=contenido
-                )
-                st.toast("☁️ Archivo de respaldo creado en GitHub", icon="✅")
-        except Exception as e:
-            st.error(f"Error al sincronizar con GitHub: {e}")
+            contents = repo.get_contents(nombre_archivo)
+            repo.update_file(
+                path=contents.path,
+                message=commit_message,
+                content=contenido,
+                sha=contents.sha
+            )
+            st.success("☁️ ¡Registros guardados y respaldados exitosamente en GitHub!")
+        except Exception:
+            repo.create_file(
+                path=nombre_archivo,
+                message=commit_message,
+                content=contenido
+            )
+            st.success("☁️ ¡Archivo de respaldo creado y guardado en GitHub!")
+    except Exception as e:
+        st.error(f"Error al conectar o guardar en GitHub: {e}")
 
 # --- INICIALIZACIÓN DE BASE DE DATOS LOCAL ---
 def init_db():
@@ -212,7 +213,7 @@ def obtener_siguiente_codigo():
 def exportar_dataframe_a_csv(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
 
-def exportar_respaldo_csv():
+def exportar_respaldo_csv(sincronizar=True):
     conn = sqlite3.connect("finanzas.db")
     df_ing = pd.read_sql_query("SELECT 'INGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM ingresos", conn)
     df_egr = pd.read_sql_query("SELECT 'EGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM egresos", conn)
@@ -220,7 +221,8 @@ def exportar_respaldo_csv():
     df_total = pd.concat([df_ing, df_egr], ignore_index=True)
     df_total.to_csv("respaldo_finanzas.csv", index=False)
     
-    sincronizar_con_github("respaldo_finanzas.csv")
+    if sincronizar:
+        sincronizar_con_github("respaldo_finanzas.csv")
 
 # --- CABECERA SAP FIORI ---
 shell_bar_html = f"""
@@ -241,7 +243,10 @@ tabs = st.tabs(["💵 Gestor de Ingresos", "💸 Gestor de Egresos", "📊 Dashb
 # PESTAÑA 1: INGRESOS
 # ==========================================
 with tabs[0]:
-    st.subheader("Entradas de Dinero (Ingresos)")
+    col_t1, col_btn_gh1 = st.columns([3, 1])
+    col_t1.subheader("Entradas de Dinero (Ingresos)")
+    if col_btn_gh1.button("💾 Guardar GH", key="gh_ingresos"):
+        exportar_respaldo_csv(sincronizar=True)
     
     with st.expander("➕ Formulario de Entrada de Ingreso", expanded=True):
         with st.form(key="form_ingresos", clear_on_submit=True):
@@ -270,8 +275,8 @@ with tabs[0]:
                     )
                     conn.commit()
                     conn.close()
-                    exportar_respaldo_csv()
-                    st.success("Ingreso guardado exitosamente.")
+                    exportar_respaldo_csv(sincronizar=True)
+                    st.success("Ingreso guardado y respaldado en GitHub exitosamente.")
                     st.rerun()
                 else:
                     st.warning("Verifique que la descripción y el monto sean válidos.")
@@ -313,8 +318,8 @@ with tabs[0]:
             conn.close()
             if st.session_state.edit_ingreso_id == id_ing_sel:
                 st.session_state.edit_ingreso_id = None
-            exportar_respaldo_csv()
-            st.success(f"Ingreso Doc #{id_ing_sel} eliminado exitosamente.")
+            exportar_respaldo_csv(sincronizar=True)
+            st.success(f"Ingreso Doc #{id_ing_sel} eliminado y sincronizado en GitHub.")
             st.rerun()
 
         if st.session_state.edit_ingreso_id:
@@ -344,8 +349,8 @@ with tabs[0]:
                         conn.commit()
                         conn.close()
                         st.session_state.edit_ingreso_id = None
-                        exportar_respaldo_csv()
-                        st.success("Registro actualizado exitosamente.")
+                        exportar_respaldo_csv(sincronizar=True)
+                        st.success("Registro actualizado y respaldado en GitHub exitosamente.")
                         st.rerun()
 
         col_sum1, col_sum2 = st.columns(2)
@@ -361,7 +366,10 @@ with tabs[0]:
 # PESTAÑA 2: EGRESOS
 # ==========================================
 with tabs[1]:
-    st.subheader("Registro de Documentos de Egreso (Orden de Gastos)")
+    col_t2, col_btn_gh2 = st.columns([3, 1])
+    col_t2.subheader("Registro de Documentos de Egreso (Orden de Gastos)")
+    if col_btn_gh2.button("💾 Guardar GH", key="gh_egresos"):
+        exportar_respaldo_csv(sincronizar=True)
     
     siguiente_codigo = obtener_siguiente_codigo()
     
@@ -417,8 +425,8 @@ with tabs[1]:
                 conn.close()
                 if guardados > 0:
                     st.session_state.cant_egresos_adicionales = 0
-                    exportar_respaldo_csv()
-                    st.success(f"Documento {codigo_egr} guardado exitosamente con {guardados} partidas.")
+                    exportar_respaldo_csv(sincronizar=True)
+                    st.success(f"Documento {codigo_egr} guardado y respaldado en GitHub con {guardados} partidas.")
                     st.rerun()
                 else:
                     st.warning("Ingrese al menos una partida con descripción e importe mayor a cero.")
@@ -459,8 +467,8 @@ with tabs[1]:
             conn.close()
             if st.session_state.edit_egreso_codigo == cod_egr_sel:
                 st.session_state.edit_egreso_codigo = None
-            exportar_respaldo_csv()
-            st.success(f"Documento Lote {cod_egr_sel} eliminado exitosamente.")
+            exportar_respaldo_csv(sincronizar=True)
+            st.success(f"Documento Lote {cod_egr_sel} eliminado y sincronizado en GitHub.")
             st.rerun()
 
         if st.session_state.edit_egreso_codigo:
@@ -498,8 +506,8 @@ with tabs[1]:
                         conn.commit()
                         conn.close()
                         st.session_state.edit_egreso_codigo = None
-                        exportar_respaldo_csv()
-                        st.success(f"Documento Lote {cod_egr_sel} actualizado correctamente.")
+                        exportar_respaldo_csv(sincronizar=True)
+                        st.success(f"Documento Lote {cod_egr_sel} actualizado y respaldado en GitHub.")
                         st.rerun()
 
         for cod in codigos_unicos:
@@ -518,7 +526,10 @@ with tabs[1]:
 # PESTAÑA 3: DASHBOARD DE CONTROL Y SALDOS
 # ==========================================
 with tabs[2]:
-    st.subheader("Análisis KPI y Balance de Cierre")
+    col_t3, col_btn_gh3 = st.columns([3, 1])
+    col_t3.subheader("Análisis KPI y Balance de Cierre")
+    if col_btn_gh3.button("💾 Guardar GH", key="gh_dashboard"):
+        exportar_respaldo_csv(sincronizar=True)
     
     col_f1, col_f2 = st.columns(2)
     anio_sel = col_f1.selectbox("Filtrar Ejercicio", ANIOS, index=ANIO_ACTUAL_INDEX, key="dash_anio")
