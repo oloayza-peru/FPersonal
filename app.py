@@ -122,18 +122,4 @@ def init_db():
     conn = sqlite3.connect("finanzas.db")
     c = conn.cursor()
     c.execute("CREATE TABLE IF NOT EXISTS ingresos (id INTEGER PRIMARY KEY AUTOINCREMENT, anio INTEGER, mes TEXT, tipo TEXT, descripcion TEXT, monto REAL, moneda TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS egresos (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, anio INTEGER, mes TEXT, tipo TEXT, descripcion TEXT, monto REAL, moneda TEXT)")
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# --- CONSTANTES Y LISTAS ---
-MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
-         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-ANIOS = list(range(2026, 2031))
-MONEDAS = ["PEN", "USD"]
-TIPOS_INGRESO = ["Planilla", "Préstamo", "Extra", "Otro trabajo"]
-TIPOS_EGRESO = ["Casa", "Servicios", "Préstamo", "Educación", "Otros"]
-
-EGRESOS_FIJ
+    c.execute
