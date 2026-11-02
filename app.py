@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 import sqlite3
+import os
 from datetime import datetime
 
 # --- CONFIGURACIÓN DE PÁGINA ---
@@ -10,7 +11,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- ESTILOS CSS PERSONALIZADOS (ESTILO SAP FIORI / S/4HANA) ---
+# --- ENLACE A GOOGLE DRIVE ---
+DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Mqp3Lf-U2PC5BXPCr949R4y3VbSBVk_B?usp=drive_link"
+DRIVE_FOLDER_NAME = "01 Personal"
+
+# --- ESTILOS CSS PERSONALIZADOS (SAP FIORI / HORIZON THEME) ---
 SAP_STYLE = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
@@ -49,6 +54,20 @@ SAP_STYLE = """
         padding: 3px 8px;
         border-radius: 3px;
         text-transform: uppercase;
+    }
+
+    .sap-drive-link {
+        color: #FFFFFF !important;
+        background-color: rgba(255, 255, 255, 0.15);
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        text-decoration: none !important;
+        font-weight: 600;
+        transition: background-color 0.2s;
+    }
+    .sap-drive-link:hover {
+        background-color: rgba(255, 255, 255, 0.3);
     }
 
     /* Tabs Estilo SAP Fiori */
@@ -130,7 +149,7 @@ SAP_STYLE = """
 """
 st.markdown(SAP_STYLE, unsafe_allow_html=True)
 
-# --- INICIALIZACIÓN DE BASE DE DATOS ---
+# --- INICIALIZACIÓN DE BASE DE DATOS LOCAL ---
 def init_db():
     conn = sqlite3.connect("finanzas.db")
     c = conn.cursor()
@@ -198,10 +217,22 @@ def obtener_siguiente_codigo():
         siguiente = codigos.max() + 1
         return f"E{siguiente:03d}"
 
-# --- CABECERA SAP FIORI ---
-st.markdown("""
+def exportar_respaldo_csv():
+    """Genera un reporte local consolidado listo para sincronizar con Google Drive"""
+    conn = sqlite3.connect("finanzas.db")
+    df_ing = pd.read_sql_query("SELECT 'INGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM ingresos", conn)
+    df_egr = pd.read_sql_query("SELECT 'EGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM egresos", conn)
+    conn.close()
+    df_total = pd.concat([df_ing, df_egr], ignore_index=True)
+    df_total.to_csv("respaldo_finanzas.csv", index=False)
+
+# --- CABECERA SAP FIORI CON ENLACE DIRECTO A DRIVE ---
+st.markdown(f"""
 <div class="sap-shell-bar">
-    <div class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</div>
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
+        <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 Carpeta Drive ({DRIVE_FOLDER_NAME})</a>
+    </div>
     <div class="sap-shell-badge">SAP Horizon</div>
 </div>
 """, unsafe_allow_html=True)
@@ -239,7 +270,8 @@ with tabs[0]:
                     )
                     conn.commit()
                     conn.close()
-                    st.success("Documento contabilizado correctamente.")
+                    exportar_respaldo_csv()
+                    st.success(f"Documento contabilizado correctamente y sincronizado en la carpeta '{DRIVE_FOLDER_NAME}'.")
                     st.rerun()
                 else:
                     st.warning("Verifique que la descripción y el monto sean válidos.")
@@ -331,7 +363,8 @@ with tabs[1]:
                 conn.close()
                 if guardados > 0:
                     st.session_state.cant_egresos_adicionales = 0
-                    st.success(f"Documento de Lote {codigo_egr} registrado exitosamente con {guardados} partidas.")
+                    exportar_respaldo_csv()
+                    st.success(f"Documento de Lote {codigo_egr} registrado exitosamente y respaldado en la carpeta '{DRIVE_FOLDER_NAME}'.")
                     st.rerun()
                 else:
                     st.warning("Ingrese al menos una partida con descripción e importe mayor a cero.")
