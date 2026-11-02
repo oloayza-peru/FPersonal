@@ -205,3 +205,32 @@ def obtener_siguiente_codigo():
     if df.empty or df['codigo'].dropna().empty:
         return "E001"
     else:
+        codigos = df['codigo'].str.replace('E', '').astype(int)
+        siguiente = codigos.max() + 1
+        return f"E{siguiente:03d}"
+
+def exportar_dataframe_a_csv(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
+
+def exportar_respaldo_csv():
+    conn = sqlite3.connect("finanzas.db")
+    df_ing = pd.read_sql_query("SELECT 'INGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM ingresos", conn)
+    df_egr = pd.read_sql_query("SELECT 'EGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM egresos", conn)
+    conn.close()
+    df_total = pd.concat([df_ing, df_egr], ignore_index=True)
+    df_total.to_csv("respaldo_finanzas.csv", index=False)
+    
+    sincronizar_con_github("respaldo_finanzas.csv")
+
+# --- CABECERA SAP FIORI ---
+shell_bar_html = f"""
+<div class="sap-shell-bar">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
+        <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 {DRIVE_FOLDER_NAME} (.csv)</a>
+        <a href="{SHEETS_REGISTROS_URL}" target="_blank" class="sap-drive-link">📊 Excel Registros</a>
+    </div>
+    <div class="sap-shell-badge">SAP Horizon</div>
+</div>
+"""
+st.markdown
