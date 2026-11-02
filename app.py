@@ -29,7 +29,6 @@ def cargar_estilos_sap():
             background-color: #F5F6F7 !important;
         }
 
-        /* SAP Fiori ShellBar Superior */
         .sap-shell-bar {
             background: linear-gradient(90deg, #1D2D3E 0%, #354A5F 100%);
             color: #FFFFFF;
@@ -71,7 +70,6 @@ def cargar_estilos_sap():
             background-color: rgba(255, 255, 255, 0.3);
         }
 
-        /* Tabs Estilo SAP Fiori */
         .stTabs [data-baseweb="tab-list"] {
             background-color: #FFFFFF;
             border-bottom: 2px solid #D9D9D9;
@@ -93,7 +91,6 @@ def cargar_estilos_sap():
             border-bottom: 3px solid #0070F2 !important;
         }
 
-        /* Formularios y Tarjetas estilo SAP */
         [data-testid="stForm"], div.element-container > div.stExpander, [data-testid="stMetric"] {
             background-color: #FFFFFF !important;
             border: 1px solid #D9D9D9 !important;
@@ -102,7 +99,6 @@ def cargar_estilos_sap():
             box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
         }
 
-        /* Botones primarios SAP y Descargas */
         .stButton > button, div[data-testid="stFormSubmitButton"] > button, .stDownloadButton > button {
             background-color: #0070F2 !important;
             color: #FFFFFF !important;
@@ -133,29 +129,8 @@ cargar_estilos_sap()
 def init_db():
     conn = sqlite3.connect("finanzas.db")
     c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS ingresos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            anio INTEGER,
-            mes TEXT,
-            tipo TEXT,
-            descripcion TEXT,
-            monto REAL,
-            moneda TEXT
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS egresos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo TEXT,
-            anio INTEGER,
-            mes TEXT,
-            tipo TEXT,
-            descripcion TEXT,
-            monto REAL,
-            moneda TEXT
-        )
-    ''')
+    c.execute("CREATE TABLE IF NOT EXISTS ingresos (id INTEGER PRIMARY KEY AUTOINCREMENT, anio INTEGER, mes TEXT, tipo TEXT, descripcion TEXT, monto REAL, moneda TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS egresos (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT, anio INTEGER, mes TEXT, tipo TEXT, descripcion TEXT, monto REAL, moneda TEXT)")
     conn.commit()
     conn.close()
 
@@ -212,18 +187,16 @@ def exportar_respaldo_csv():
     df_total.to_csv("respaldo_finanzas.csv", index=False)
 
 # --- CABECERA SAP FIORI ---
-st.markdown(
-    f'''
-    <div class="sap-shell-bar">
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
-            <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 Carpeta Drive ({DRIVE_FOLDER_NAME})</a>
-        </div>
-        <div class="sap-shell-badge">SAP Horizon</div>
+shell_bar_html = f"""
+<div class="sap-shell-bar">
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
+        <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 Carpeta Drive ({DRIVE_FOLDER_NAME})</a>
     </div>
-    ''',
-    unsafe_allow_html=True
-)
+    <div class="sap-shell-badge">SAP Horizon</div>
+</div>
+"""
+st.markdown(shell_bar_html, unsafe_allow_html=True)
 
 tabs = st.tabs(["💵 Gestor de Ingresos", "💸 Gestor de Egresos", "📊 Dashboard Analítico"])
 
@@ -286,4 +259,35 @@ with tabs[0]:
         monto_usd = df_ingresos[df_ingresos['Moneda'] == 'USD']['Monto'].sum()
         
         col_sum1.metric("Acumulado Ingresos (PEN)", f"S/ {monto_pen:,.2f}")
-        col_sum2.metric("Acumulado Ing
+        col_sum2.metric("Acumulado Ingresos (USD)", f"$ {monto_usd:,.2f}")
+    else:
+        st.info("Sin registros de ingresos en la base de datos.")
+
+# ==========================================
+# PESTAÑA 2: EGRESOS
+# ==========================================
+with tabs[1]:
+    st.subheader("Registro de Documentos de Egreso (Orden de Gastos)")
+    
+    siguiente_codigo = obtener_siguiente_codigo()
+    
+    with st.expander("➕ Registro de Partidas de Egreso (Fijas y Adicionales)", expanded=True):
+        col_h1, col_h2, col_h3 = st.columns(3)
+        anio_egr = col_h1.selectbox("Ejercicio (Año)", ANIOS, key="egr_anio")
+        mes_egr = col_h2.selectbox("Período Mensual", MESES, key="egr_mes")
+        codigo_egr = col_h3.text_input("N° de Registro Correlativo", value=siguiente_codigo, disabled=True)
+
+        st.markdown("---")
+        st.button("➕ Añadir Registro Adicional (No Fijo)", on_click=agregar_fila_adicional)
+        
+        with st.form(key="form_egresos"):
+            gastos_input = []
+            
+            st.markdown("**Partidas Fijas de Gastos**")
+            for i, (cat, desc) in enumerate(EGRESOS_FIJOS_BASE):
+                c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 2, 1])
+                c1.text_input(f"Categoría #{i+1}", value=cat, key=f"cat_{i}", disabled=True)
+                c2.text_input(f"Concepto #{i+1}", value=desc, key=f"desc_{i}")
+                monto = c3.number_input(f"Importe #{i+1}", min_value=0.0, format="%.2f", key=f"monto_{i}")
+                moneda = c4.selectbox(f"Moneda #{i+1}", MONEDAS, key=f"moneda_{i}")
+                incluir = c5.checkbox("Activo", value=True, key=f"inc
