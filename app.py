@@ -162,13 +162,19 @@ def init_db():
 
 init_db()
 
-# --- CONSTANTES Y LISTAS ---
+# --- CONSTANTES Y FECHA ACTUAL DEL SISTEMA ---
 MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
          "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 ANIOS = list(range(2026, 2031))
 MONEDAS = ["PEN", "USD"]
 TIPOS_INGRESO = ["Planilla", "Préstamo", "Extra", "Otro trabajo"]
 TIPOS_EGRESO = ["Casa", "Servicios", "Préstamo", "Educación", "Otros"]
+
+# Detección dinámica del mes y año del sistema
+NOW = datetime.now()
+MES_ACTUAL_INDEX = NOW.month - 1
+ANIO_ACTUAL = NOW.year
+ANIO_ACTUAL_INDEX = ANIOS.index(ANIO_ACTUAL) if ANIO_ACTUAL in ANIOS else 0
 
 EGRESOS_FIJOS_BASE = [
     ("Casa", "Alquiler"),
@@ -215,7 +221,6 @@ def exportar_respaldo_csv():
     df_total = pd.concat([df_ing, df_egr], ignore_index=True)
     df_total.to_csv("respaldo_finanzas.csv", index=False)
     
-    # Sincronizar automáticamente el archivo actualizado con GitHub
     sincronizar_con_github("respaldo_finanzas.csv")
 
 # --- CABECERA SAP FIORI ---
@@ -243,10 +248,10 @@ with tabs[0]:
         with st.form(key="form_ingresos", clear_on_submit=True):
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                anio_ing = st.selectbox("Año Fiscal", ANIOS, key="ing_anio")
+                anio_ing = st.selectbox("Año Fiscal", ANIOS, index=ANIO_ACTUAL_INDEX, key="ing_anio")
                 tipo_ing = st.selectbox("Clase de Ingreso", TIPOS_INGRESO, key="ing_tipo")
             with col2:
-                mes_ing = st.selectbox("Período / Mes", MESES, key="ing_mes")
+                mes_ing = st.selectbox("Período / Mes", MESES, index=MES_ACTUAL_INDEX, key="ing_mes")
                 moneda_ing = st.selectbox("Moneda Base", MONEDAS, key="ing_moneda")
             with col3:
                 desc_ing = st.text_input("Descripción del Asiento", key="ing_desc")
@@ -351,8 +356,8 @@ with tabs[1]:
     
     with st.expander("➕ Registro de Partidas de Egreso (Fijas y Adicionales)", expanded=True):
         col_h1, col_h2, col_h3 = st.columns(3)
-        anio_egr = col_h1.selectbox("Ejercicio (Año)", ANIOS, key="egr_anio")
-        mes_egr = col_h2.selectbox("Período Mensual", MESES, key="egr_mes")
+        anio_egr = col_h1.selectbox("Ejercicio (Año)", ANIOS, index=ANIO_ACTUAL_INDEX, key="egr_anio")
+        mes_egr = col_h2.selectbox("Período Mensual", MESES, index=MES_ACTUAL_INDEX, key="egr_mes")
         codigo_egr = col_h3.text_input("N° de Registro Correlativo", value=siguiente_codigo, disabled=True)
 
         st.markdown("---")
@@ -493,8 +498,8 @@ with tabs[2]:
     st.subheader("Análisis KPI y Balance de Cierre")
     
     col_f1, col_f2 = st.columns(2)
-    anio_sel = col_f1.selectbox("Filtrar Ejercicio", ANIOS, index=0, key="dash_anio")
-    mes_sel = col_f2.selectbox("Filtrar Período", MESES, index=0, key="dash_mes")
+    anio_sel = col_f1.selectbox("Filtrar Ejercicio", ANIOS, index=ANIO_ACTUAL_INDEX, key="dash_anio")
+    mes_sel = col_f2.selectbox("Filtrar Período", MESES, index=MES_ACTUAL_INDEX, key="dash_mes")
 
     conn = sqlite3.connect("finanzas.db")
     df_ing_m = pd.read_sql_query("SELECT 'INGRESO' AS Tipo, anio AS Año, mes AS Mes, tipo AS Categoria, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos WHERE anio=? AND mes=?", conn, params=(anio_sel, mes_sel))
@@ -520,19 +525,4 @@ with tabs[2]:
             )
 
     ing_pen = df_ing_m[df_ing_m['Moneda'] == 'PEN']['Monto'].sum()
-    egr_pen = df_egr_m[df_egr_m['Moneda'] == 'PEN']['Monto'].sum()
-    balance_pen = ing_pen - egr_pen
-
-    st.markdown(f"##### Reporte de Balance de Período ({mes_sel} {anio_sel})")
-    
-    kpi1, kpi2, kpi3 = st.columns(3)
-    
-    kpi1.metric("Ingresos Totales (PEN)", f"S/ {ing_pen:,.2f}")
-    kpi2.metric("Egresos Totales (PEN)", f"S/ {egr_pen:,.2f}")
-    kpi3.metric("Flujo Neto / Superávit (PEN)", f"S/ {balance_pen:,.2f}")
-
-    st.markdown("---")
-    if ing_pen > 0:
-        tasa_ahorro = (balance_pen / ing_pen) * 100
-        st.progress(max(0.0, min(1.0, balance_pen / ing_pen)))
-        st.caption(f"Tasa de Ahorro Neto alcanzada: **{tasa_ahorro:.1f}%** (Umbral SAP recomendado: ≥ 20.0%)")
+    egr_pen = df_egr_m
