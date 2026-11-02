@@ -181,4 +181,109 @@ EGRESOS_FIJOS_BASE = [
 ]
 
 if "cant_egresos_adicionales" not in st.session_state:
-    st.
+    st.session_state.cant_egresos_adicionales = 0
+
+def agregar_fila_adicional():
+    st.session_state.cant_egresos_adicionales += 1
+
+def obtener_siguiente_codigo():
+    conn = sqlite3.connect("finanzas.db")
+    df = pd.read_sql_query("SELECT codigo FROM egresos", conn)
+    conn.close()
+    if df.empty or df['codigo'].dropna().empty:
+        return "E001"
+    else:
+        codigos = df['codigo'].str.replace('E', '').astype(int)
+        siguiente = codigos.max() + 1
+        return f"E{siguiente:03d}"
+
+def exportar_dataframe_a_excel(df: pd.DataFrame, sheet_name: str = "Registros") -> bytes:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
+    return output.getvalue()
+
+def exportar_respaldo_csv():
+    conn = sqlite3.connect("finanzas.db")
+    df_ing = pd.read_sql_query("SELECT 'INGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM ingresos", conn)
+    df_egr = pd.read_sql_query("SELECT 'EGRESO' AS Tipo_Registro, anio, mes, tipo, descripcion, monto, moneda FROM egresos", conn)
+    conn.close()
+    df_total = pd.concat([df_ing, df_egr], ignore_index=True)
+    df_total.to_csv("respaldo_finanzas.csv", index=False)
+
+# --- CABECERA SAP FIORI ---
+st.markdown(
+    f'''
+    <div class="sap-shell-bar">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span class="sap-shell-title">SAP S/4HANA — Financial Control & Treasury Management</span>
+            <a href="{DRIVE_FOLDER_URL}" target="_blank" class="sap-drive-link">📁 Carpeta Drive ({DRIVE_FOLDER_NAME})</a>
+        </div>
+        <div class="sap-shell-badge">SAP Horizon</div>
+    </div>
+    ''',
+    unsafe_allow_html=True
+)
+
+tabs = st.tabs(["💵 Gestor de Ingresos", "💸 Gestor de Egresos", "📊 Dashboard Analítico"])
+
+# ==========================================
+# PESTAÑA 1: INGRESOS
+# ==========================================
+with tabs[0]:
+    st.subheader("Entradas de Dinero (Ingresos)")
+    
+    with st.expander("➕ Formulario de Entrada de Ingreso", expanded=True):
+        with st.form(key="form_ingresos", clear_on_submit=True):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                anio_ing = st.selectbox("Año Fiscal", ANIOS, key="ing_anio")
+                tipo_ing = st.selectbox("Clase de Ingreso", TIPOS_INGRESO, key="ing_tipo")
+            with col2:
+                mes_ing = st.selectbox("Período / Mes", MESES, key="ing_mes")
+                moneda_ing = st.selectbox("Moneda Base", MONEDAS, key="ing_moneda")
+            with col3:
+                desc_ing = st.text_input("Descripción del Asiento", key="ing_desc")
+            with col4:
+                monto_ing = st.number_input("Monto", min_value=0.0, format="%.2f", key="ing_monto")
+            
+            st.markdown("---")
+            btn_guardar_ing = st.form_submit_button("Guardar")
+            
+            if btn_guardar_ing:
+                if desc_ing and monto_ing > 0:
+                    conn = sqlite3.connect("finanzas.db")
+                    c = conn.cursor()
+                    c.execute(
+                        "INSERT INTO ingresos (anio, mes, tipo, descripcion, monto, moneda) VALUES (?, ?, ?, ?, ?, ?)",
+                        (anio_ing, mes_ing, tipo_ing, desc_ing, monto_ing, moneda_ing)
+                    )
+                    conn.commit()
+                    conn.close()
+                    exportar_respaldo_csv()
+                    st.success("Ingreso guardado exitosamente.")
+                    st.rerun()
+                else:
+                    st.warning("Verifique que la descripción y el monto sean válidos.")
+
+    st.markdown("#### Registros Contabilizados")
+    conn = sqlite3.connect("finanzas.db")
+    df_ingresos = pd.read_sql_query("SELECT id AS 'Doc #', anio AS Año, mes AS Mes, tipo AS Tipo, descripcion AS Descripción, monto AS Monto, moneda AS Moneda FROM ingresos", conn)
+    conn.close()
+
+    if not df_ingresos.empty:
+        excel_bytes_ing = exportar_dataframe_a_excel(df_ingresos, sheet_name="Ingresos")
+        st.download_button(
+            label="📥 Descargar Ingresos (Excel)",
+            data=excel_bytes_ing,
+            file_name=f"Ingresos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        st.dataframe(df_ingresos, use_container_width=True)
+        
+        col_sum1, col_sum2 = st.columns(2)
+        monto_pen = df_ingresos[df_ingresos['Moneda'] == 'PEN']['Monto'].sum()
+        monto_usd = df_ingresos[df_ingresos['Moneda'] == 'USD']['Monto'].sum()
+        
+        col_sum1.metric("Acumulado Ingresos (PEN)", f"S/ {monto_pen:,.2f}")
+        col_sum2.metric("Acumulado Ing
